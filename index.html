@@ -456,8 +456,18 @@
                                             <option value="left">يسار (للإنجليزية)</option>
                                         </select>
                                     </div>
+                                    <!-- أزرار المحاذاة المتعددة -->
+                                    <div id="multi-align-tools" class="hidden mt-3 pt-3 border-t border-indigo-200">
+                                        <label class="block text-[10px] font-bold text-indigo-700 mb-2">تسوية العناصر المحددة:</label>
+                                        <div class="grid grid-cols-4 gap-1">
+                                            <button type="button" id="align-top-btn" class="bg-white border border-indigo-300 hover:bg-indigo-100 p-1.5 text-xs rounded shadow-sm transition-colors" title="مساواة للأعلى">⬆️</button>
+                                            <button type="button" id="align-bottom-btn" class="bg-white border border-indigo-300 hover:bg-indigo-100 p-1.5 text-xs rounded shadow-sm transition-colors" title="مساواة للأسفل">⬇️</button>
+                                            <button type="button" id="align-right-btn" class="bg-white border border-indigo-300 hover:bg-indigo-100 p-1.5 text-xs rounded shadow-sm transition-colors" title="مساواة لليمين">➡️</button>
+                                            <button type="button" id="align-left-btn" class="bg-white border border-indigo-300 hover:bg-indigo-100 p-1.5 text-xs rounded shadow-sm transition-colors" title="مساواة لليسار">⬅️</button>
+                                        </div>
+                                    </div>
                                     <button type="button" id="delete-marker-btn" class="w-full py-2 text-xs bg-red-100 text-red-700 font-bold rounded-lg hover:bg-red-200 transition-colors mt-2">
-                                        حذف هذا الموضع
+                                        حذف المحدد
                                     </button>
                                 </div>
                             </div>
@@ -1330,7 +1340,7 @@
         window.currentMode = 'interactive';
         window.selectedExcelCol = null;
         window.manualMarkers = [];
-        window.selectedMarkerId = null;
+        window.selectedMarkerIds = [];
         window.currentPreviewRowIndex = 0;
         window.isGenerationCancelled = false; // متغير عالمي للتحكم بالإلغاء
 
@@ -1541,7 +1551,17 @@
 
         function handlePageClick(e) {
             if (e.target !== e.currentTarget) return;
-            if (!window.selectedExcelCol) return window.showToast("اختر عمود إكسل أولاً!");
+            
+            // إلغاء التحديد عند النقر على مساحة فارغة (إلا إذا كان Shift مضغوطاً)
+            if (!e.shiftKey && !e.ctrlKey) {
+                window.selectedMarkerIds = [];
+                if (typeof window.updateSelectionVisuals === 'function') window.updateSelectionVisuals();
+            }
+
+            if (!window.selectedExcelCol) {
+                if (window.selectedMarkerIds.length === 0) window.showToast("اختر عمود إكسل أولاً!");
+                return;
+            }
 
             const rect = e.currentTarget.getBoundingClientRect();
             const newMarker = {
@@ -1558,7 +1578,9 @@
             };
             window.manualMarkers.push(newMarker);
             createVisualMarkerElement(newMarker, e.currentTarget, rect.width, rect.height);
-            selectMarker(newMarker.id);
+            
+            window.selectedMarkerIds = [newMarker.id];
+            if (typeof window.updateSelectionVisuals === 'function') window.updateSelectionVisuals();
         }
 
         function createVisualMarkerElement(marker, overlay, oWidth, oHeight) {
@@ -1594,10 +1616,24 @@
             mDiv.addEventListener('mousedown', (e) => {
                 if (e.target.classList.contains('delete-marker-x') || e.target.classList.contains('resize-handle')) return;
                 e.preventDefault();
+                
+                // منطق التحديد المتعدد باستخدام Shift أو Ctrl
+                if (e.shiftKey || e.ctrlKey) {
+                    if (window.selectedMarkerIds.includes(marker.id)) {
+                        window.selectedMarkerIds = window.selectedMarkerIds.filter(id => id !== marker.id);
+                    } else {
+                        window.selectedMarkerIds.push(marker.id);
+                    }
+                } else {
+                    if (!window.selectedMarkerIds.includes(marker.id)) {
+                        window.selectedMarkerIds = [marker.id];
+                    }
+                }
+                if (typeof window.updateSelectionVisuals === 'function') window.updateSelectionVisuals();
+
                 isDragging = true;
                 startX = e.clientX - mDiv.offsetLeft;
                 startY = e.clientY - mDiv.offsetTop;
-                selectMarker(marker.id);
             });
             
             document.addEventListener('mousemove', (e) => {
@@ -1617,7 +1653,8 @@
                     isResizing = true; resizeDir = h.dataset.dir;
                     initW = mDiv.offsetWidth; initH = mDiv.offsetHeight; initL = mDiv.offsetLeft;
                     initX = e.clientX;
-                    selectMarker(marker.id);
+                    window.selectedMarkerIds = [marker.id];
+                    if (typeof window.updateSelectionVisuals === 'function') window.updateSelectionVisuals();
                 });
             });
             
@@ -1647,7 +1684,11 @@
             const deleteBtn = mDiv.querySelector('.delete-marker-x');
             if (deleteBtn) {
                 deleteBtn.addEventListener('click', (e) => {
-                    e.stopPropagation(); deleteMarker(marker.id);
+                    e.stopPropagation(); 
+                    window.manualMarkers = window.manualMarkers.filter(m => m.id !== marker.id);
+                    document.getElementById(marker.id)?.remove();
+                    window.selectedMarkerIds = window.selectedMarkerIds.filter(id => id !== marker.id);
+                    if (typeof window.updateSelectionVisuals === 'function') window.updateSelectionVisuals();
                 });
             }
             overlay.appendChild(mDiv);
@@ -1658,53 +1699,114 @@
                 overlay.innerHTML = '';
                 window.manualMarkers.filter(m => m.pageNum === parseInt(overlay.dataset.pageNum)).forEach(m => createVisualMarkerElement(m, overlay, overlay.getBoundingClientRect().width, overlay.getBoundingClientRect().height));
             });
+            if (typeof window.updateSelectionVisuals === 'function') window.updateSelectionVisuals();
         };
 
-        function selectMarker(id) {
-            window.selectedMarkerId = id;
-            const m = window.manualMarkers.find(x => x.id === id);
-            if(!m) return;
-            
+        window.updateSelectionVisuals = function() {
             document.querySelectorAll('.pdf-overlay > div').forEach(el => {
                 el.classList.remove('border-orange-500', 'bg-orange-200', 'border-[2px]');
                 el.classList.add('border-blue-500', 'border-[1px]');
             });
             
-            const selectedEl = document.getElementById(id);
-            if(selectedEl) {
-                selectedEl.classList.remove('border-blue-500', 'border-[1px]');
-                selectedEl.classList.add('border-orange-500', 'bg-orange-200', 'border-[2px]');
-            }
+            window.selectedMarkerIds.forEach(id => {
+                const selectedEl = document.getElementById(id);
+                if(selectedEl) {
+                    selectedEl.classList.remove('border-blue-500', 'border-[1px]');
+                    selectedEl.classList.add('border-orange-500', 'bg-orange-200', 'border-[2px]');
+                }
+            });
 
-            if (markerEditor) markerEditor.classList.remove('hidden');
-            if (editorActiveFieldName) editorActiveFieldName.textContent = `(${m.excelCol})`;
-            if (markerFontSizeInput) markerFontSizeInput.value = m.fontSize;
-            if (markerColorInput) markerColorInput.value = m.color;
-            if (markerAlignSelect) markerAlignSelect.value = m.align;
-        }
+            const markerEditor = document.getElementById('marker-editor');
+            const multiTools = document.getElementById('multi-align-tools');
+            const editorActiveFieldName = document.getElementById('editor-active-field-name');
+            const markerFontSizeInput = document.getElementById('marker-font-size');
+            const markerColorInput = document.getElementById('marker-color');
+            const markerAlignSelect = document.getElementById('marker-align');
+
+            if (window.selectedMarkerIds.length === 0) {
+                if (markerEditor) markerEditor.classList.add('hidden');
+            } else {
+                if (markerEditor) markerEditor.classList.remove('hidden');
+                
+                if (window.selectedMarkerIds.length === 1) {
+                    if (multiTools) multiTools.classList.add('hidden');
+                    const m = window.manualMarkers.find(x => x.id === window.selectedMarkerIds[0]);
+                    if (m) {
+                        if (editorActiveFieldName) editorActiveFieldName.textContent = `(${m.excelCol})`;
+                        if (markerFontSizeInput) markerFontSizeInput.value = m.fontSize;
+                        if (markerColorInput) markerColorInput.value = m.color;
+                        if (markerAlignSelect) markerAlignSelect.value = m.align;
+                    }
+                } else {
+                    if (multiTools) multiTools.classList.remove('hidden');
+                    if (editorActiveFieldName) editorActiveFieldName.textContent = `(${window.selectedMarkerIds.length} عناصر محددة)`;
+                }
+            }
+        };
 
         ['input', 'change'].forEach(evt => {
-            [markerFontSizeInput, markerColorInput, markerAlignSelect].forEach(input => {
-                input?.addEventListener(evt, () => {
-                    if(!window.selectedMarkerId) return;
-                    const m = window.manualMarkers.find(x => x.id === window.selectedMarkerId);
-                    if(m) {
-                        if (markerFontSizeInput) m.fontSize = parseInt(markerFontSizeInput.value) || 14;
-                        if (markerColorInput) m.color = markerColorInput.value;
-                        if (markerAlignSelect) m.align = markerAlignSelect.value;
-                        const s = document.getElementById(window.selectedMarkerId)?.querySelector('.live-text-preview');
-                        if(s) { s.style.fontSize = `${m.fontSize}px`; s.style.color = m.color; s.style.textAlign = m.align; }
-                    }
+            [document.getElementById('marker-font-size'), document.getElementById('marker-color'), document.getElementById('marker-align')].forEach(input => {
+                input?.addEventListener(evt, (e) => {
+                    if(window.selectedMarkerIds.length === 0) return;
+                    
+                    window.selectedMarkerIds.forEach(id => {
+                        const m = window.manualMarkers.find(x => x.id === id);
+                        if(m) {
+                            if (input.id === 'marker-font-size') m.fontSize = parseInt(e.target.value) || 14;
+                            if (input.id === 'marker-color') m.color = e.target.value;
+                            if (input.id === 'marker-align') m.align = e.target.value;
+                            
+                            const s = document.getElementById(id)?.querySelector('.live-text-preview');
+                            if(s) { 
+                                s.style.fontSize = `${m.fontSize}px`; 
+                                s.style.color = m.color; 
+                                s.style.textAlign = m.align; 
+                            }
+                        }
+                    });
                 });
             });
         });
 
-        function deleteMarker(id) {
-            window.manualMarkers = window.manualMarkers.filter(m => m.id !== id);
-            document.getElementById(id)?.remove();
-            if(window.selectedMarkerId === id) { window.selectedMarkerId = null; markerEditor?.classList.add('hidden'); }
+        document.getElementById('delete-marker-btn')?.addEventListener('click', () => { 
+            if(window.selectedMarkerIds.length > 0) {
+                window.manualMarkers = window.manualMarkers.filter(m => !window.selectedMarkerIds.includes(m.id));
+                window.selectedMarkerIds.forEach(id => document.getElementById(id)?.remove());
+                window.selectedMarkerIds = [];
+                window.updateSelectionVisuals();
+            }
+        });
+
+        // دوال المحاذاة الدقيقة
+        function alignSelected(dir) {
+            if(window.selectedMarkerIds.length < 2) return;
+            const markersToAlign = window.manualMarkers.filter(m => window.selectedMarkerIds.includes(m.id));
+            if(markersToAlign.length === 0) return;
+
+            if(dir === 'top') { 
+                const minY = Math.min(...markersToAlign.map(x => x.yPercent)); 
+                markersToAlign.forEach(x => x.yPercent = minY); 
+            }
+            if(dir === 'bottom') { 
+                const maxY = Math.max(...markersToAlign.map(x => x.yPercent + x.heightPercent)); 
+                markersToAlign.forEach(x => x.yPercent = maxY - x.heightPercent); 
+            }
+            if(dir === 'left') { 
+                const minX = Math.min(...markersToAlign.map(x => x.xPercent)); 
+                markersToAlign.forEach(x => x.xPercent = minX); 
+            }
+            if(dir === 'right') { 
+                const maxX = Math.max(...markersToAlign.map(x => x.xPercent + x.widthPercent)); 
+                markersToAlign.forEach(x => x.xPercent = maxX - x.widthPercent); 
+            }
+            
+            window.redrawMarkers();
         }
-        deleteMarkerBtn?.addEventListener('click', () => { if(window.selectedMarkerId) deleteMarker(window.selectedMarkerId); });
+
+        document.getElementById('align-top-btn')?.addEventListener('click', () => alignSelected('top'));
+        document.getElementById('align-bottom-btn')?.addEventListener('click', () => alignSelected('bottom'));
+        document.getElementById('align-left-btn')?.addEventListener('click', () => alignSelected('left'));
+        document.getElementById('align-right-btn')?.addEventListener('click', () => alignSelected('right'));
 
         // Auto Convert
         convertToManualBtn?.addEventListener('click', async () => {
