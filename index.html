@@ -1550,12 +1550,16 @@
         };
 
         function handlePageClick(e) {
+            // منع تنفيذ الدالة إذا كان النقر تم على مربع موجود مسبقاً
             if (e.target !== e.currentTarget) return;
             
-            // إلغاء التحديد عند النقر على مساحة فارغة (إلا إذا كان Shift مضغوطاً)
+            // إلغاء التحديد فقط عند النقر على مساحة فارغة وبدون الضغط على Shift/Ctrl
             if (!e.shiftKey && !e.ctrlKey) {
                 window.selectedMarkerIds = [];
                 if (typeof window.updateSelectionVisuals === 'function') window.updateSelectionVisuals();
+            } else if (e.shiftKey || e.ctrlKey) {
+                // إذا كان المستخدم يضغط Shift ونقر على مساحة فارغة، لا تفعل شيئاً
+                return; 
             }
 
             if (!window.selectedExcelCol) {
@@ -1585,8 +1589,10 @@
 
         function createVisualMarkerElement(marker, overlay, oWidth, oHeight) {
             const mDiv = document.createElement('div');
+            
+            // إعطاء المعرف الفعلي للمربع
             mDiv.id = marker.id;
-            mDiv.className = "absolute bg-blue-50 bg-opacity-30 border-[1px] border-blue-500 hover:border-blue-700 z-20 flex flex-col justify-center select-none group transition-colors";
+            mDiv.className = "absolute bg-blue-50 bg-opacity-30 border-[1px] border-blue-500 hover:border-blue-700 z-20 flex flex-col justify-center select-none group transition-colors cursor-move";
             mDiv.style.left = `${marker.xPercent * oWidth}px`;
             mDiv.style.top = `${marker.yPercent * oHeight}px`;
             mDiv.style.width = `${marker.widthPercent * oWidth}px`;
@@ -1613,10 +1619,13 @@
             `;
 
             let isDragging = false, startX, startY;
+            
             mDiv.addEventListener('mousedown', (e) => {
                 if (e.target.classList.contains('delete-marker-x') || e.target.classList.contains('resize-handle')) return;
-                e.preventDefault();
                 
+                e.preventDefault();
+                e.stopPropagation(); // يمنع انتقال النقر إلى الورقة البيضاء في الخلفية
+
                 // منطق التحديد المتعدد باستخدام Shift أو Ctrl
                 if (e.shiftKey || e.ctrlKey) {
                     if (window.selectedMarkerIds.includes(marker.id)) {
@@ -1629,6 +1638,7 @@
                         window.selectedMarkerIds = [marker.id];
                     }
                 }
+                
                 if (typeof window.updateSelectionVisuals === 'function') window.updateSelectionVisuals();
 
                 isDragging = true;
@@ -1644,12 +1654,16 @@
                 marker.xPercent = mDiv.offsetLeft / rect.width;
                 marker.yPercent = mDiv.offsetTop / rect.height;
             });
-            document.addEventListener('mouseup', () => isDragging = false);
+            
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
 
             let isResizing = false, resizeDir = '', initW, initH, initL, initX;
             mDiv.querySelectorAll('.resize-handle').forEach(h => {
                 h.addEventListener('mousedown', (e) => {
-                    e.stopPropagation(); e.preventDefault();
+                    e.stopPropagation(); 
+                    e.preventDefault();
                     isResizing = true; resizeDir = h.dataset.dir;
                     initW = mDiv.offsetWidth; initH = mDiv.offsetHeight; initL = mDiv.offsetLeft;
                     initX = e.clientX;
@@ -1679,7 +1693,10 @@
                 marker.heightPercent = mDiv.offsetHeight / rect.height;
                 marker.xPercent = mDiv.offsetLeft / rect.width;
             });
-            document.addEventListener('mouseup', () => isResizing = false);
+            
+            document.addEventListener('mouseup', () => {
+                isResizing = false;
+            });
 
             const deleteBtn = mDiv.querySelector('.delete-marker-x');
             if (deleteBtn) {
