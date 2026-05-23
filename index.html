@@ -1,1 +1,1612 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تعبئة الاستمارات التلقائية (PDF & Excel) - الأستاذ محمد عبدالرحمن</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts for Arabic -->
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght=400;500;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- Required Libraries -->
+    <!-- SheetJS for Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- pdf-lib for PDF Manipulation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <!-- Fontkit required by pdf-lib for custom fonts -->
+    <script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.min.js"></script>
+    <!-- pdf.js for PDF Rendering in Canvas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <!-- JSZip for zipping files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- FileSaver for downloading the zip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- Arabic Reshaper for Interactive Fields fallback -->
+    <script src="https://cdn.jsdelivr.net/npm/arabic-persian-reshaper@1.0.0/dist/index.min.js"></script>
 
+    <style>
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background-color: #f8fafc;
+        }
+        .file-upload-wrapper:hover {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .pdf-page-container {
+            position: relative;
+        }
+        /* Loader */
+        .loader-spin {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #2563eb;
+            width: 32px;
+            height: 32px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* --- Animations & Glassmorphism for Auth Screen --- */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .fade-in-up {
+            animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        @keyframes blob {
+            0% { transform: translate(0px, 0px) scale(1); }
+            33% { transform: translate(30px, -50px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+            100% { transform: translate(0px, 0px) scale(1); }
+        }
+        
+        .animate-blob {
+            animation: blob 8s infinite alternate;
+        }
+        
+        .animation-delay-2000 { animation-delay: 2s; }
+        .animation-delay-4000 { animation-delay: 4s; }
+
+        .input-group { transition: transform 0.3s ease; }
+        .input-group:focus-within { transform: scale(1.02); }
+    </style>
+</head>
+<body class="text-gray-800 min-h-screen flex flex-col items-center py-6 px-4">
+
+    <!-- Firebase Custom Action Router Screen -->
+    <div id="firebase-action-screen" class="fixed inset-0 bg-gray-50 flex items-center justify-center p-4 z-[150] overflow-hidden hidden">
+        <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob"></div>
+        <div class="absolute bottom-[-20%] left-[20%] w-96 h-96 bg-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob animation-delay-4000"></div>
+
+        <div class="w-full max-w-md glass-panel rounded-[2rem] p-8 flex flex-col fade-in-up relative z-10 text-center shadow-2xl border border-white/60">
+            <!-- Loading Action -->
+            <div id="action-loading" class="py-8">
+                <div class="loader-spin mx-auto mb-4 border-blue-500"></div>
+                <h3 class="text-xl font-bold text-gray-800" data-i18n="action_loading">جارِ معالجة طلبك السحابي...</h3>
+                <p class="text-sm text-gray-500 mt-2" data-i18n="wait_moments">يرجى الانتظار لحظات</p>
+            </div>
+
+            <!-- Reset Password Custom UI -->
+            <div id="action-reset-pwd-ui" class="hidden">
+                <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full mx-auto mb-4 flex items-center justify-center shadow-inner">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                </div>
+                <h3 class="text-2xl font-black text-gray-800 mb-2" data-i18n="new_pwd_title">كلمة مرور جديدة</h3>
+                <p class="text-sm text-gray-600 mb-6" data-i18n="set_new_pwd_desc">قم بتعيين كلمة مرور جديدة لحسابك الآن.</p>
+                
+                <input type="password" id="new-password-input" data-i18n-placeholder="new_pwd_placeholder" placeholder="كلمة المرور الجديدة (6 أحرف أو أكثر)" class="w-full bg-white/80 border border-gray-200 rounded-xl py-4 px-4 text-sm font-bold focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none mb-4 text-center tracking-widest shadow-inner" dir="ltr">
+                
+                <button id="save-new-pwd-btn" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold py-3.5 rounded-xl transition-all duration-300 shadow-lg transform hover:-translate-y-1" data-i18n="save_new_pwd_btn">
+                    حفظ كلمة المرور والدخول
+                </button>
+            </div>
+
+            <!-- Success UI -->
+            <div id="action-success-ui" class="hidden py-4">
+                <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full mx-auto mb-4 flex items-center justify-center shadow-inner">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                <h3 class="text-2xl font-black text-gray-800 mb-2" id="action-success-title" data-i18n="action_success_title">تمت العملية بنجاح!</h3>
+                <p class="text-sm text-gray-600 mb-6" id="action-success-msg" data-i18n="action_success_desc">تم التفعيل وتحديث بياناتك بنجاح.</p>
+                <button id="action-go-login-btn" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-extrabold py-3.5 rounded-xl transition-all shadow-lg transform hover:-translate-y-1" data-i18n="continue_login_btn">
+                    الاستمرار لتسجيل الدخول
+                </button>
+            </div>
+
+            <!-- Error UI -->
+            <div id="action-error-ui" class="hidden py-4">
+                <div class="w-20 h-20 bg-red-100 text-red-600 rounded-full mx-auto mb-4 flex items-center justify-center shadow-inner">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </div>
+                <h3 class="text-2xl font-black text-gray-800 mb-2" data-i18n="invalid_link_title">الرابط غير صالح!</h3>
+                <p class="text-sm text-gray-600 mb-6" data-i18n="invalid_link_desc">عذراً، هذا الرابط إما أنه مستخدم مسبقاً أو منتهي الصلاحية.</p>
+                <button id="action-go-home-btn" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-extrabold py-3.5 rounded-xl transition-all shadow-lg transform hover:-translate-y-1" data-i18n="back_home_btn">
+                    العودة للصفحة الرئيسية
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auth Screen Fullscreen Overlay -->
+    <div id="auth-screen" class="fixed inset-0 bg-gray-50 flex items-center justify-center p-4 z-[100] overflow-hidden">
+        
+        <!-- Animated Background Blobs -->
+        <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob"></div>
+        <div class="absolute top-[20%] right-[-10%] w-96 h-96 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob animation-delay-2000"></div>
+        <div class="absolute bottom-[-20%] left-[20%] w-96 h-96 bg-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-60 animate-blob animation-delay-4000"></div>
+
+        <!-- Glassmorphism Card -->
+        <div class="w-full max-w-md glass-panel rounded-[2rem] p-8 flex flex-col fade-in-up relative z-10">
+            
+            <!-- Language switcher on Auth Screen -->
+            <div class="absolute top-6 left-6 z-50">
+                <button id="lang-switch-auth-btn" class="bg-white/80 hover:bg-white text-blue-600 font-extrabold text-xs px-3 py-1.5 rounded-full shadow border transition-colors flex items-center gap-1">
+                    🌐 EN
+                </button>
+            </div>
+
+            <!-- Logo & Title -->
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg transform rotate-3 hover:rotate-6 transition-transform">
+                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                </div>
+                <h2 class="text-3xl font-black text-gray-800 mb-1 tracking-tight" data-i18n="main_title">دمج الاستمارات</h2>
+                <p class="text-xs text-gray-500 font-bold bg-white/50 inline-block px-3 py-1 rounded-full border border-white" data-i18n="dev_credit">إشراف وتطوير الأستاذ محمد عبدالرحمن</p>
+                <div id="auth-subtitle" class="mt-4 text-sm font-bold text-blue-700" data-i18n="auth_subtitle_login">تسجيل الدخول إلى حسابك</div>
+            </div>
+
+            <div id="auth-main-content">
+                <!-- Mode Select tabs -->
+                <div class="flex bg-gray-200/50 p-1.5 rounded-xl mb-6 relative border border-white/40">
+                    <button id="auth-tab-login" class="flex-1 py-2.5 text-sm font-extrabold rounded-lg bg-white text-blue-600 shadow-md transition-all duration-300 transform scale-100 relative z-10" data-i18n="login_tab">تسجيل الدخول</button>
+                    <button id="auth-tab-register" class="flex-1 py-2.5 text-sm font-extrabold rounded-lg text-gray-500 hover:text-gray-700 transition-all duration-300 relative z-10" data-i18n="register_tab">حساب جديد</button>
+                </div>
+
+                <!-- Form Elements -->
+                <form id="auth-form" class="space-y-4">
+                    
+                    <div id="auth-field-name" class="hidden input-group relative">
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-blue-500">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                        </div>
+                        <input type="text" id="auth-name" data-i18n-placeholder="name_placeholder" placeholder="الاسم الكامل" class="w-full bg-white/70 border border-white/50 rounded-xl py-3.5 pr-12 pl-4 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none placeholder-gray-400 shadow-sm backdrop-blur-sm">
+                    </div>
+                    
+                    <div class="input-group relative">
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-blue-500">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                        </div>
+                        <input type="email" id="auth-email" data-i18n-placeholder="email_placeholder" placeholder="البريد الإلكتروني" required class="w-full bg-white/70 border border-white/50 rounded-xl py-3.5 pr-12 pl-4 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none placeholder-gray-400 shadow-sm backdrop-blur-sm">
+                    </div>
+                    
+                    <div class="input-group relative">
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-blue-500">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                        </div>
+                        <input type="password" id="auth-password" data-i18n-placeholder="password_placeholder" placeholder="كلمة المرور (••••••••)" required class="w-full bg-white/70 border border-white/50 rounded-xl py-3.5 pr-12 pl-4 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none placeholder-gray-400 shadow-sm backdrop-blur-sm tracking-widest">
+                    </div>
+
+                    <div class="text-left w-full mt-1" id="forgot-pwd-container">
+                        <button type="button" id="show-forgot-pwd-btn" class="text-xs text-blue-600 hover:text-blue-800 font-bold transition-colors" data-i18n="forgot_pwd_link">نسيت كلمة المرور؟</button>
+                    </div>
+
+                    <button type="submit" id="auth-submit-btn" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold py-3.5 rounded-xl transition-all duration-300 shadow-lg hover:shadow-indigo-500/30 transform hover:-translate-y-1 mt-2 flex justify-center items-center gap-2">
+                        <span data-i18n="login_btn">دخول الآن</span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Forgot Password Box -->
+            <div id="auth-forgot-pwd-box" class="hidden text-center fade-in-up relative z-10 w-full mt-2">
+                <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full mx-auto mb-4 flex items-center justify-center shadow-inner">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                </div>
+                <h3 class="text-xl font-black text-gray-800 mb-2" data-i18n="forgot_pwd_title">إعادة تعيين كلمة المرور</h3>
+                <p class="text-sm text-gray-600 mb-4" data-i18n="forgot_pwd_desc">أدخل بريدك الإلكتروني وسنرسل لك رابطاً مباشراً لتعيين كلمة مرور جديدة.</p>
+                <div class="bg-blue-50/50 p-3 rounded-lg mb-4 text-[10px] text-right text-gray-600 font-bold border border-blue-100" data-i18n="forgot_pwd_warning">
+                    ⚠️ تذكر: الرابط قد يصل إلى مجلد (الرسائل غير المرغوب فيها Spam) أو (Promotions) في بريد جيميل.
+                </div>
+                
+                <input type="email" id="forgot-pwd-email" data-i18n-placeholder="email_placeholder" placeholder="البريد الإلكتروني" required class="w-full bg-white/70 border border-white/50 rounded-xl py-3.5 pr-4 pl-4 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none placeholder-gray-400 shadow-sm backdrop-blur-sm mb-4 text-left" dir="ltr">
+                
+                <button type="button" id="send-reset-link-btn" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold py-3.5 rounded-xl transition-all duration-300 shadow-lg transform hover:-translate-y-1 mb-3" data-i18n="send_reset_btn">
+                    إرسال رابط استعادة المرور
+                </button>
+                <button type="button" id="back-to-login-btn" class="text-sm text-gray-500 hover:text-gray-800 font-bold transition-colors underline" data-i18n="back_to_login_btn">
+                    العودة لتسجيل الدخول
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Workspace Container -->
+    <div id="main-app" class="hidden w-full max-w-6xl flex flex-col items-center">
+        
+        <!-- Top Account Banner -->
+        <div class="w-full flex justify-between items-center bg-white p-4 rounded-xl shadow-sm mb-4 border border-gray-200">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-xl">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                </div>
+                <div>
+                    <h3 id="user-display-name" class="font-bold text-gray-800 text-sm" data-i18n="loading_profile">تحميل الملف الشخصي...</h3>
+                    <p id="user-plan-status" class="text-xs text-gray-500" data-i18n="loading_subscription">جاري التحقق من الاشتراك</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="lang-switch-main-btn" class="bg-gray-100 hover:bg-gray-200 text-blue-600 text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow-sm flex items-center gap-1">
+                    🌐 EN
+                </button>
+                <button id="activate-admin-btn" class="hidden bg-indigo-100 hover:bg-indigo-200 text-indigo-700 text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow-sm" data-i18n="activate_admin_btn">
+                    🔑 تفعيل الإدارة
+                </button>
+                <button id="show-subscriptions-btn" class="hidden bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-sm" data-i18n="upgrade_plan_btn">
+                    ترقية الاشتراك
+                </button>
+                <button id="open-admin-btn" class="hidden bg-gray-800 hover:bg-gray-900 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-sm" data-i18n="admin_panel_btn">
+                    لوحة الإدارة
+                </button>
+                <button id="logout-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow-sm" title="تسجيل الخروج">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="w-full bg-white rounded-2xl shadow-xl overflow-hidden mb-10 relative">
+            
+            <!-- App Overlay (Lock overlay) -->
+            <div id="app-blocker" class="absolute inset-0 bg-white bg-opacity-95 z-40 flex flex-col items-center justify-center backdrop-blur-sm hidden">
+                <div class="loader-spin mb-4"></div>
+                <h2 id="app-blocker-msg" class="text-xl font-bold text-gray-800 animate-pulse" data-i18n="loading_data">تحميل البيانات...</h2>
+                <button id="blocker-subscribe-btn" class="hidden mt-4 bg-amber-500 hover:bg-amber-600 text-white font-bold px-6 py-2 rounded-lg shadow-md transition-colors" data-i18n="blocker_subscribe_btn">عرض خطط الاشتراك</button>
+            </div>
+
+            <!-- Header -->
+            <div class="bg-blue-600 p-6 text-white text-center relative z-50">
+                <h1 class="text-3xl font-bold mb-2" data-i18n="app_title">أداة التعبئة التلقائية للاستمارات</h1>
+                <p class="text-blue-100 opacity-90 mb-4" data-i18n="app_desc">قم برفع أي استمارة PDF وملف Excel لتوليد الاستمارات المعبأة فوراً</p>
+                <div class="inline-flex items-center flex-wrap justify-center gap-3 bg-blue-800 bg-opacity-40 border border-blue-400 px-6 py-2 rounded-full text-md font-bold shadow-sm">
+                    <span id="secret-admin-trigger" class="cursor-pointer hover:text-blue-200 transition-colors" title="إعداد الأستاذ محمد" data-i18n="app_creator">إعداد: الأستاذ محمد عبدالرحمن</span>
+                    <span class="text-xs text-blue-200 font-medium">|</span>
+                    <a href="http://instagram.com/m9h.7d" target="_blank" class="inline-flex items-center justify-center w-8 h-8 bg-pink-500 hover:bg-pink-600 hover:text-white text-white rounded-full transition-colors shadow-sm">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.051.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+                    </a>
+                    <a href="https://wa.me/+9647709873200" target="_blank" class="inline-flex items-center justify-center w-8 h-8 bg-green-500 hover:bg-green-600 text-white rounded-full transition-colors shadow-sm">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.284 1.263.453 1.695.58.712.227 1.36.195 1.871.118.571-.086 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.9801.005-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+                    </a>
+                    <span class="w-2 h-2 rounded-full bg-green-400"></span>
+                    <span id="font-status-badge" class="text-xs text-green-100 font-bold" data-i18n="optical_badge">تقنية الختم البصري نشطة</span>
+                </div>
+            </div>
+
+            <div class="p-8 space-y-8">
+                
+                <!-- Step 1 & 2: File Uploads -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center cursor-pointer transition-colors file-upload-wrapper relative" id="pdf-upload-box">
+                        <input type="file" id="pdf-file" accept="application/pdf" class="hidden">
+                        <div class="text-blue-500 mb-3">
+                            <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        </div>
+                        <h3 class="text-lg font-bold mb-1" data-i18n="step1_title">1. اختر استمارة PDF</h3>
+                        <p class="text-sm text-gray-500" id="pdf-status" data-i18n="step1_desc">يدعم الاستمارات التفاعلية والعادية والممسوحة ضوئياً</p>
+                    </div>
+
+                    <div class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center cursor-pointer transition-colors file-upload-wrapper relative" id="excel-upload-box">
+                        <input type="file" id="excel-file" accept=".xlsx, .xls, .csv" class="hidden">
+                        <div class="text-green-500 mb-3">
+                            <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        </div>
+                        <h3 class="text-lg font-bold mb-1" data-i18n="step2_title">2. اختر ملف Excel</h3>
+                        <p class="text-sm text-gray-500" id="excel-status" data-i18n="step2_desc">يحتوي على البيانات المطلوب إدراجها بالاستمارة</p>
+                    </div>
+                </div>
+
+                <!-- Mode Selection & Designer Section -->
+                <div id="mapping-section" class="hidden border rounded-xl overflow-hidden shadow-sm border-blue-200">
+                    <div class="bg-blue-50 border-b border-blue-100 p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                        <div>
+                            <h3 class="text-xl font-bold text-blue-900" data-i18n="step3_title">3. إعداد وتصميم الربط</h3>
+                            <p class="text-sm text-blue-700 mt-1" data-i18n="step3_desc">اختر نمط التعبئة المناسب لاستماراتك وابدأ بالربط</p>
+                        </div>
+                        <div class="flex rounded-lg bg-blue-100 p-1">
+                            <button type="button" id="mode-interactive-btn" class="px-4 py-2 text-sm font-bold rounded-md bg-white text-blue-800 shadow-sm transition-all" data-i18n="mode_interactive">
+                                تعبئة حقول تفاعلية جاهزة
+                            </button>
+                            <button type="button" id="mode-manual-btn" class="px-4 py-2 text-sm font-bold rounded-md text-blue-600 hover:text-blue-800 transition-all" data-i18n="mode_manual">
+                                الوضع الحر (تحديد المواقع والتحجيم بالماوس)
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6 space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50 border border-blue-100 rounded-lg p-4">
+                            <div>
+                                <h4 class="font-bold text-blue-800 text-sm mb-1" data-i18n="naming_col">تسمية الاستمارات الناتجة</h4>
+                                <p class="text-xs text-blue-600 mb-2" data-i18n="naming_desc">اختر العمود الذي سيتم استخدامه لتسمية كل ملف PDF (مثل الاسم)</p>
+                                <select id="filename-column" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border text-sm">
+                                </select>
+                            </div>
+                            <div class="flex flex-col justify-center">
+                                <label class="inline-flex items-center cursor-pointer mt-3">
+                                    <input type="checkbox" id="flatten-pdf-checkbox" class="sr-only peer" checked>
+                                    <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                    <span class="ms-3 text-sm font-medium text-gray-700" data-i18n="flatten_pdf">تسطيح ملف الـ PDF الناتج (Flatten PDF)</span>
+                                </label>
+                                <p class="text-xs text-gray-500 mt-1 ms-14" data-i18n="flatten_desc">موصى بها لمنع التعديل اللاحق على الاستمارات.</p>
+                            </div>
+                        </div>
+
+                        <!-- Interactive Form Mapping -->
+                        <div id="interactive-workspace" class="space-y-4">
+                            <div id="assistant-banner" class="hidden bg-amber-50 border border-amber-200 rounded-lg p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                                <div class="flex items-start gap-3">
+                                    <div class="text-amber-600 mt-0.5">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold text-amber-900 text-sm" data-i18n="advisor_banner">💡 نصيحة لضمان دقة العربية:</h4>
+                                        <p class="text-xs text-amber-700 mt-1" data-i18n="advisor_desc">إذا واجهت أي تقطع بالحروف، نوصي بتحويل الحقول لـ "الوضع الحر" لتعمل بتقنية الختم البصري الدقيقة جداً.</p>
+                                    </div>
+                                </div>
+                                <button type="button" id="convert-to-manual-btn" class="w-full sm:w-auto px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-md transition-colors whitespace-nowrap" data-i18n="convert_btn">
+                                    تحويل كافة الحقول للوضع الحر فوراً
+                                </button>
+                            </div>
+
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full text-sm text-right">
+                                    <thead class="bg-gray-100 text-gray-700">
+                                        <tr>
+                                            <th class="px-4 py-3 rounded-tr-lg w-1/2 font-bold" data-i18n="table_pdf_field">حقل الـ PDF التفاعلي</th>
+                                            <th class="px-4 py-3 rounded-tl-lg w-1/2 font-bold" data-i18n="table_excel_col">عمود الـ Excel المقابل</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="mapping-table-body" class="divide-y divide-gray-200">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Manual Visual Designer Workspace -->
+                        <div id="manual-workspace" class="hidden flex flex-col lg:flex-row gap-6">
+                            
+                            <!-- Left Panel: Columns -->
+                            <div class="w-full lg:w-1/4 space-y-4">
+                                <div class="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                    <div class="border-b pb-2">
+                                        <h4 class="font-bold text-gray-700 text-sm" data-i18n="excel_cols_title">أعمدة الـ Excel المتاحة</h4>
+                                        <p class="text-[11px] text-gray-500 mt-1" data-i18n="excel_cols_desc">اضغط على العمود، ثم انقر على المكان المراد في صفحة الـ PDF:</p>
+                                    </div>
+                                    <div id="excel-columns-list" class="space-y-2 mt-4 max-h-[300px] overflow-y-auto custom-scrollbar"></div>
+                                </div>
+
+                                <!-- نظام إدارة القوالب VIP -->
+                                <div class="bg-blue-50 p-4 rounded-xl border border-blue-200 relative overflow-hidden">
+                                    
+                                    <!-- Lock Overlay for Free/Trial Users -->
+                                    <div id="premium-template-lock" class="absolute inset-0 bg-white/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center border border-amber-200">
+                                        <span class="text-3xl mb-2 drop-shadow-md">👑</span>
+                                        <span class="text-sm font-bold text-amber-700 text-center px-4 mb-2" data-i18n="template_lock">ميزة حفظ القوالب للـ VIP</span>
+                                        <p class="text-[10px] text-amber-600 text-center px-4 font-medium leading-relaxed" data-i18n="template_lock_desc">حصرياً للمشتركين (الشهري والسنوي): رتب استمارتك مرة واحدة، واحفظها لتعيد استخدامها لاحقاً بضغطة زر!</p>
+                                    </div>
+
+                                    <div class="border-b border-blue-200 pb-2 flex justify-between items-center">
+                                        <h4 class="font-bold text-blue-900 text-sm" data-i18n="templates_title">إدارة القوالب</h4>
+                                        <span class="text-[9px] bg-amber-400 text-white font-bold px-2 py-0.5 rounded-full shadow-sm">VIP</span>
+                                    </div>
+                                    
+                                    <div class="mt-3 space-y-3">
+                                        <!-- Save Template -->
+                                        <div>
+                                            <label class="block text-[10px] font-bold text-blue-700 mb-1" data-i18n="template_save_lbl">حفظ التصميم الحالي:</label>
+                                            <div class="flex gap-2">
+                                                <input type="text" id="template-name-input" data-i18n-placeholder="template_name_placeholder" placeholder="اكتب اسم القالب هنا..." class="w-full border border-blue-300 rounded p-1.5 text-xs bg-white focus:ring-1 focus:ring-blue-500 outline-none">
+                                                <button type="button" id="save-template-btn" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-700 shadow-sm transition-colors whitespace-nowrap" data-i18n="save_btn">حفظ</button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Load Template -->
+                                        <div class="pt-2 border-t border-blue-100">
+                                            <label class="block text-[10px] font-bold text-blue-700 mb-1" data-i18n="template_load_lbl">إدارة القوالب المحفوظة:</label>
+                                            <div class="flex flex-col gap-2">
+                                                <select id="saved-templates-select" class="w-full border border-blue-300 rounded p-1.5 text-xs bg-white outline-none">
+                                                    <option value="" data-i18n="template_select_placeholder">-- اختر قالباً --</option>
+                                                </select>
+                                                <div class="flex gap-1 justify-between">
+                                                    <button type="button" id="load-template-btn" class="flex-1 bg-emerald-600 text-white py-1.5 rounded text-[10px] font-bold hover:bg-emerald-700 shadow-sm transition-colors whitespace-nowrap" data-i18n="apply_btn">تطبيق</button>
+                                                    <button type="button" id="rename-template-btn" class="flex-1 bg-amber-500 text-white py-1.5 rounded text-[10px] font-bold hover:bg-amber-600 shadow-sm transition-colors whitespace-nowrap" title="اكتب الاسم الجديد في الحقل أعلاه واضغط هنا" data-i18n="rename_btn">تسمية</button>
+                                                    <button type="button" id="delete-template-btn" class="flex-1 bg-red-600 text-white py-1.5 rounded text-[10px] font-bold hover:bg-red-700 shadow-sm transition-colors whitespace-nowrap" data-i18n="delete_btn">حذف</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="marker-editor" class="hidden space-y-3 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                                    <h5 class="font-bold text-xs text-indigo-900 flex items-center gap-1 border-b border-indigo-200 pb-2">
+                                        <span data-i18n="editor_title">تعديل تنسيق الحقل</span>
+                                        <span id="editor-active-field-name" class="text-indigo-600 font-extrabold"></span>
+                                    </h5>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-600 mb-1" data-i18n="font_size_lbl">حجم الخط</label>
+                                        <input type="number" id="marker-font-size" value="14" min="6" max="72" class="w-full border rounded p-1.5 text-sm bg-white outline-none focus:border-indigo-400">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-600 mb-1" data-i18n="font_color_lbl">لون النص</label>
+                                        <input type="color" id="marker-color" value="#000000" class="w-full h-8 p-0 border rounded bg-white cursor-pointer">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-600 mb-1" data-i18n="align_lbl">محاذاة النص</label>
+                                        <select id="marker-align" class="w-full border rounded p-1.5 text-sm bg-white outline-none focus:border-indigo-400">
+                                            <option value="right" data-i18n="align_right">يمين (للعربية)</option>
+                                            <option value="center" data-i18n="align_center">وسط</option>
+                                            <option value="left" data-i18n="align_left">يسار (للإنجليزية)</option>
+                                        </select>
+                                    </div>
+                                    <!-- أزرار المحاذاة المتعددة -->
+                                    <div id="multi-align-tools" class="hidden mt-3 pt-3 border-t border-indigo-200">
+                                        <label class="block text-[10px] font-bold text-indigo-700 mb-2" data-i18n="align_multi_lbl">تسوية العناصر المحددة:</label>
+                                        <div class="grid grid-cols-4 gap-1">
+                                            <button type="button" id="align-top-btn" class="bg-white border border-indigo-300 hover:bg-indigo-100 p-1.5 text-xs rounded shadow-sm transition-colors" title="مساواة للأعلى" data-i18n-title="align_top_title">⬆️</button>
+                                            <button type="button" id="align-bottom-btn" class="bg-white border border-indigo-300 hover:bg-indigo-100 p-1.5 text-xs rounded shadow-sm transition-colors" title="مساواة للأسفل" data-i18n-title="align_bot_title">⬇️</button>
+                                            <button type="button" id="align-right-btn" class="bg-white border border-indigo-300 hover:bg-indigo-100 p-1.5 text-xs rounded shadow-sm transition-colors" title="مساواة لليمين" data-i18n-title="align_right_title">➡️</button>
+                                            <button type="button" id="align-left-btn" class="bg-white border border-indigo-300 hover:bg-indigo-100 p-1.5 text-xs rounded shadow-sm transition-colors" title="مساواة لليسار" data-i18n-title="align_left_title">⬅️</button>
+                                        </div>
+                                    </div>
+                                    <button type="button" id="delete-marker-btn" class="w-full py-2 text-xs bg-red-100 text-red-700 font-bold rounded-lg hover:bg-red-200 transition-colors mt-2" data-i18n="delete_marker_btn">
+                                        حذف المحدد
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Right Panel: PDF Page Visual Renderer -->
+                            <div class="flex-1 space-y-4 border rounded-xl p-4 bg-gray-100">
+                                <div class="flex justify-between items-center border-b pb-2 flex-wrap gap-2">
+                                    <div class="flex items-center gap-3">
+                                        <span class="text-sm font-bold text-gray-700" data-i18n="designer_title">لوحة التصميم</span>
+                                        <div id="preview-row-controls" class="hidden flex items-center gap-1 bg-white border border-gray-300 rounded-md px-2 py-1 shadow-sm">
+                                            <button type="button" id="next-preview-btn" class="text-gray-600 hover:text-white hover:bg-blue-500 px-2 py-0.5 rounded text-[11px] font-bold transition-colors" data-i18n="next_btn">التالي</button>
+                                            <span class="text-[11px] font-bold text-gray-600 mx-1"><span data-i18n="preview_row_lbl">بيانات صف:</span> <span id="current-preview-row" class="text-blue-600 text-xs">1</span></span>
+                                            <button type="button" id="prev-preview-btn" class="text-gray-600 hover:text-white hover:bg-blue-500 px-2 py-0.5 rounded text-[11px] font-bold transition-colors" data-i18n="prev_btn">السابق</button>
+                                        </div>
+                                    </div>
+                                    <span class="text-xs text-blue-700 bg-blue-100 px-3 py-1 rounded-full font-bold animate-pulse" id="active-column-indicator" data-i18n="indicator_choose">اختر حقلاً للبدء</span>
+                                </div>
+                                
+                                <div id="pdf-visual-pages-container" dir="ltr" class="space-y-6 max-h-[650px] overflow-y-auto custom-scrollbar p-4 flex flex-col items-center">
+                                    <p class="text-gray-500 text-sm py-10" style="direction: rtl;" data-i18n="designer_empty_desc">يرجى رفع ملف الاستمارة لرسم المعاينة...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Action & Status -->
+                    <div class="bg-gray-50 border-t p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <button type="button" id="generate-btn" class="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg transition-colors flex items-center justify-center gap-2">
+                            <span data-i18n="generate_btn">توليد وتحميل الاستمارات (ZIP)</span>
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        </button>
+                        
+                        <div id="progress-container" class="hidden flex-1 w-full flex items-center gap-3">
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div id="progress-bar" class="bg-green-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                            <span id="progress-text" class="text-sm font-bold text-gray-700 whitespace-nowrap">0%</span>
+                            <!-- زر إلغاء العملية السريع -->
+                            <button type="button" id="cancel-generate-btn" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow transition-colors whitespace-nowrap" data-i18n="cancel_btn">إلغاء العملية</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Subscription Modal -->
+    <div id="subscription-modal" class="fixed inset-0 z-50 bg-black bg-opacity-60 hidden flex items-center justify-center backdrop-blur-sm px-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-8 relative overflow-hidden">
+            <button id="close-sub-modal" class="absolute top-4 left-4 text-gray-400 hover:text-red-500 bg-gray-100 hover:bg-red-50 w-8 h-8 rounded-full flex items-center justify-center transition-colors">✕</button>
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-bold text-gray-800 mb-2" data-i18n="sub_modal_title">اختر خطة الاشتراك المناسبة لك</h2>
+                <p class="text-gray-500" data-i18n="sub_modal_desc">تم استهلاك المحاولة التجريبية المجانية بنجاح.</p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Monthly -->
+                <div class="border-2 border-gray-200 rounded-xl p-6 text-center hover:border-blue-500 transition-colors relative">
+                    <h3 class="text-xl font-bold text-gray-800 mb-2" data-i18n="monthly_plan">الاشتراك الشهري</h3>
+                    <div class="text-3xl font-extrabold text-blue-600 mb-4" data-i18n="monthly_price">25,000 <span class="text-sm text-gray-500 font-medium">دينار / شهر</span></div>
+                    <ul class="text-sm text-gray-600 space-y-2 mb-6 text-right" data-i18n="monthly_features">
+                        <li>✔️ معالجة عدد لا محدود من الملفات</li>
+                        <li>✔️ دعم فني متواصل</li>
+                        <li>✔️ تقنية الختم البصري الدقيقة</li>
+                        <li class="text-amber-600 font-bold">👑 ميزة حفظ القوالب</li>
+                    </ul>
+                    <div class="flex gap-2 w-full mt-4">
+                        <a href="https://wa.me/+9647709873200" target="_blank" class="flex-1 text-center bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded-lg transition-colors text-xs flex items-center justify-center gap-1" data-i18n="whatsapp">واتساب</a>
+                        <a href="http://instagram.com/m9h.7d" target="_blank" class="flex-1 text-center bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 rounded-lg transition-colors text-xs flex items-center justify-center gap-1" data-i18n="instagram">انستغرام</a>
+                    </div>
+                </div>
+                
+                <!-- Yearly -->
+                <div class="border-2 border-amber-400 rounded-xl p-6 text-center relative bg-amber-50 shadow-md transform md:-translate-y-2">
+                    <div class="absolute -top-3 right-1/2 transform translate-x-1/2 bg-amber-500 text-white text-[10px] font-bold px-3 py-1 rounded-full" data-i18n="most_popular">الأكثر توفيراً</div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2" data-i18n="yearly_plan">الاشتراك السنوي</h3>
+                    <div class="text-3xl font-extrabold text-amber-600 mb-4" data-i18n="yearly_price">50,000 <span class="text-sm text-gray-500 font-medium">دينار / سنة</span></div>
+                    <ul class="text-sm text-gray-600 space-y-2 mb-6 text-right" data-i18n="yearly_features">
+                        <li>✔️ توفير هائل جداً</li>
+                        <li>✔️ جميع مميزات الباقة الشهرية</li>
+                        <li>✔️ تحديثات مجانية للمنصة</li>
+                        <li class="text-amber-600 font-bold">👑 ميزة حفظ القوالب</li>
+                    </ul>
+                    <div class="flex gap-2 w-full mt-4">
+                        <a href="https://wa.me/+9647709873200" target="_blank" class="flex-1 text-center bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded-lg transition-colors text-xs flex items-center justify-center gap-1" data-i18n="whatsapp">واتساب</a>
+                        <a href="http://instagram.com/m9h.7d" target="_blank" class="flex-1 text-center bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 rounded-lg transition-colors text-xs flex items-center justify-center gap-1" data-i18n="instagram">انستغرام</a>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-6 text-center text-sm text-gray-500" data-i18n="payment_methods">
+                طرق الدفع مدعومة: زين كاش، آسيا حوالة، بطاقات الماستر كارد.
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Panel Modal -->
+    <div id="admin-modal" class="fixed inset-0 z-50 bg-black bg-opacity-60 hidden flex items-center justify-center backdrop-blur-sm px-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full h-[80vh] flex flex-col relative overflow-hidden">
+            <div class="bg-gray-800 text-white p-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold flex items-center gap-2" data-i18n="admin_panel_title"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg> لوحة الإدارة والاشتراكات</h2>
+                <button id="close-admin-modal" class="text-gray-400 hover:text-white transition-colors">✕</button>
+            </div>
+            
+            <!-- حقل البحث الجديد في لوحة الإدارة -->
+            <div class="p-4 bg-gray-100 border-b border-gray-200 flex items-center justify-center lg:justify-start">
+                <div class="relative w-full md:w-1/2">
+                    <input type="text" id="admin-search-input" data-i18n-placeholder="admin_search_placeholder" placeholder="البحث عن مستخدم بالاسم أو البريد الإلكتروني..." class="w-full border border-gray-300 rounded-lg p-2.5 pr-10 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm transition-all">
+                    <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6 flex-1 overflow-auto bg-gray-50">
+                <div class="overflow-x-auto bg-white rounded-lg shadow border border-gray-200">
+                    <table class="min-w-full text-sm text-right">
+                        <thead class="bg-gray-100 text-gray-700">
+                            <tr>
+                                <th class="px-4 py-3 font-bold" data-i18n="admin_tbl_user">اسم المستخدم / البريد</th>
+                                <th class="px-4 py-3 font-bold" data-i18n="admin_tbl_plan">الخطة الحالية</th>
+                                <th class="px-4 py-3 font-bold" data-i18n="admin_tbl_status">الحالة</th>
+                                <th class="px-4 py-3 font-bold" data-i18n="admin_tbl_expiry">تاريخ الانتهاء</th>
+                                <th class="px-4 py-3 font-bold text-center" data-i18n="admin_tbl_actions">إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-users-table" class="divide-y divide-gray-200">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Password Modal -->
+    <div id="admin-password-modal" class="fixed inset-0 z-[60] bg-black bg-opacity-60 hidden flex items-center justify-center backdrop-blur-sm px-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 relative">
+            <button type="button" id="close-pwd-modal" class="absolute top-4 left-4 text-gray-400 hover:text-red-500 bg-gray-100 hover:bg-red-50 w-8 h-8 rounded-full flex items-center justify-center transition-colors">✕</button>
+            <h3 class="text-xl font-bold text-gray-800 mb-2 text-center" data-i18n="admin_pwd_modal_title">تفعيل الإدارة</h3>
+            <p class="text-sm text-gray-600 mb-4 text-center" data-i18n="admin_pwd_modal_desc">الرجاء إدخال كلمة المرور السرية للمتابعة.</p>
+            <input type="password" id="admin-pwd-input" data-i18n-placeholder="password_placeholder" placeholder="كلمة المرور" class="w-full border border-gray-300 rounded-lg p-3 mb-4 text-center text-lg tracking-widest focus:ring-2 focus:ring-blue-500 outline-none">
+            <button type="button" id="submit-admin-pwd-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg transition-colors shadow text-sm" data-i18n="confirm_activate_btn">
+                تأكيد وتفعيل
+            </button>
+        </div>
+    </div>
+
+    <!-- Custom Toast -->
+    <div id="custom-toast" class="fixed bottom-5 left-5 right-5 sm:left-auto sm:w-96 bg-red-600 text-white px-4 py-3 rounded-xl shadow-2xl transition-all duration-300 transform translate-y-20 opacity-0 z-[200] flex items-center justify-between pointer-events-none">
+        <span id="toast-message" class="text-sm font-bold"></span>
+        <button type="button" id="close-toast-btn" class="text-white font-bold hover:text-gray-200 p-1 pointer-events-auto">✕</button>
+    </div>
+
+    <!-- Firebase System Modules -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, confirmPasswordReset, onAuthStateChanged, signOut, sendEmailVerification } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, addDoc, getDocs, query, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCKWuGi5wSDJPLYUJVSJEuIv2rxnoXaVFM",
+            authDomain: "muhammed-files.firebaseapp.com",
+            projectId: "muhammed-files",
+            storageBucket: "muhammed-files.firebasestorage.app",
+            messagingSenderId: "698656262609",
+            appId: "1:698656262609:web:7dbb9b45aeb18e42ed38f0",
+            measurementId: "G-QVM5VB1TX2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // ----------------------------------------------------
+        // Bilingual UI & Translation Dictionary
+        // ----------------------------------------------------
+        let currentLanguage = localStorage.getItem('app_lang') || 'ar';
+
+        const dictionary = {
+            ar: {
+                main_title: "دمج الاستمارات",
+                dev_credit: "إشراف وتطوير الأستاذ محمد عبدالرحمن",
+                auth_subtitle_login: "تسجيل الدخول إلى حسابك",
+                auth_subtitle_register: "إنشاء حساب مجاني جديد",
+                login_tab: "تسجيل الدخول",
+                register_tab: "حساب جديد",
+                name_placeholder: "الاسم الكامل",
+                email_placeholder: "البريد الإلكتروني",
+                password_placeholder: "كلمة المرور (••••••••)",
+                new_pwd_placeholder: "كلمة المرور الجديدة (6 أحرف أو أكثر)",
+                forgot_pwd_link: "نسيت كلمة المرور؟",
+                login_btn: "دخول الآن",
+                register_btn: "إنشاء الحساب وإرسال رابط التفعيل",
+                forgot_pwd_title: "إعادة تعيين كلمة المرور",
+                forgot_pwd_desc: "أدخل بريدك الإلكتروني وسنرسل لك رابطاً مباشراً لتعيين كلمة مرور جديدة.",
+                forgot_pwd_warning: "⚠️ تذكر: الرابط قد يصل إلى مجلد (الرسائل غير المرغوب فيها Spam) أو (Promotions) في بريد جيميل.",
+                send_reset_btn: "إرسال رابط استعادة المرور",
+                back_to_login_btn: "العودة لتسجيل الدخول",
+                loading_profile: "تحميل الملف الشخصي...",
+                loading_subscription: "جاري التحقق من الاشتراك...",
+                activate_admin_btn: "🔑 تفعيل الإدارة",
+                upgrade_plan_btn: "ترقية الاشتراك",
+                admin_panel_btn: "لوحة الإدارة",
+                loading_data: "تحميل البيانات...",
+                blocker_subscribe_btn: "عرض خطط الاشتراك",
+                app_title: "أداة التعبئة التلقائية للاستمارات",
+                app_desc: "قم برفع أي استمارة PDF وملف Excel لتوليد الاستمارات المعبأة فوراً",
+                app_creator: "إعداد: الأستاذ محمد عبدالرحمن",
+                step1_title: "1. اختر استمارة PDF",
+                step1_desc: "يدعم الاستمارات التفاعلية والعادية والممسوحة ضوئياً",
+                step2_title: "2. اختر ملف Excel",
+                step2_desc: "يحتوي على البيانات المطلوب إدراجها بالاستمارة",
+                step3_title: "3. إعداد وتصميم الربط",
+                step3_desc: "اختر نمط التعبئة المناسب لاستماراتك وابدأ بالربط",
+                mode_interactive: "تعبئة حقول تفاعلية جاهزة",
+                mode_manual: "الوضع الحر (تحديد المواقع والتحجيم بالماوس)",
+                naming_col: "تسمية الاستمارات الناتجة",
+                naming_desc: "اختر العمود الذي سيتم استخدامه لتسمية كل ملف PDF (مثل الاسم)",
+                flatten_pdf: "تسطيح ملف الـ PDF الناتج (Flatten PDF)",
+                flatten_desc: "موصى بها لمنع التعديل اللاحق على الاستمارات.",
+                advisor_banner: "💡 نصيحة لضمان دقة العربية:",
+                advisor_desc: "إذا واجهت أي تقطع بالحروف، نوصي بتحويل الحقول لـ \"الوضع الحر\" لتعمل بتقنية الختم البصري الدقيقة جداً.",
+                convert_btn: "تحويل كافة الحقول للوضع الحر فوراً",
+                table_pdf_field: "حقل الـ PDF التفاعلي",
+                table_excel_col: "عمود الـ Excel المقابل",
+                excel_cols_title: "أعمدة الـ Excel المتاحة",
+                excel_cols_desc: "اضغط على العمود، ثم انقر على المكان المراد في صفحة الـ PDF:",
+                template_lock: "ميزة حفظ القوالب للـ VIP",
+                template_lock_desc: "حصرياً للمشتركين (الشهري والسنوي): رتب استمارتك مرة واحدة، واحفظها لتعيد استخدامها لاحقاً بضغطة زر!",
+                templates_title: "إدارة القوالب",
+                template_save_lbl: "حفظ التصميم الحالي:",
+                template_name_placeholder: "اكتب اسم القالب هنا...",
+                save_btn: "حفظ",
+                template_load_lbl: "إدارة القوالب المحفوظة:",
+                template_select_placeholder: "-- اختر قالباً --",
+                apply_btn: "تطبيق",
+                rename_btn: "تسمية",
+                delete_btn: "حذف",
+                editor_title: "تعديل تنسيق الحقل",
+                font_size_lbl: "حجم الخط",
+                font_color_lbl: "لون النص",
+                align_lbl: "محاذاة النص",
+                align_right: "يمين (للعربية)",
+                align_center: "وسط",
+                align_left: "يسار (للإنجليزية)",
+                align_multi_lbl: "تسوية العناصر المحددة:",
+                align_top_title: "مساواة للأعلى",
+                align_bot_title: "مساواة للأسفل",
+                align_left_title: "مساواة لليسار",
+                align_right_title: "مساواة لليمين",
+                delete_marker_btn: "حذف المحدد",
+                designer_title: "لوحة التصميم",
+                next_btn: "التالي",
+                prev_btn: "السابق",
+                preview_row_lbl: "بيانات صف:",
+                indicator_choose: "اختر حقلاً للبدء",
+                designer_empty_desc: "يرجى رفع ملف الاستمارة لرسم المعاينة...",
+                generate_btn: "توليد وتحميل الاستمارات (ZIP)",
+                cancel_btn: "إلغاء العملية",
+                sub_modal_title: "اختر خطة الاشتراك المناسبة لك",
+                sub_modal_desc: "تم استهلاك المحاولة التجريبية المجانية بنجاح.",
+                monthly_plan: "الاشتراك الشهري",
+                monthly_price: "25,000 دينار / شهر",
+                monthly_features: "<li>✔️ معالجة عدد لا محدود من الملفات</li><li>✔️ دعم فني متواصل</li><li>✔️ تقنية الختم البصري الدقيقة</li><li class='text-amber-600 font-bold'>👑 ميزة حفظ القوالب</li>",
+                yearly_plan: "الاشتراك السنوي",
+                yearly_price: "50,000 دينار / سنة",
+                yearly_features: "<li>✔️ توفير هائل جداً</li><li>✔️ جميع مميزات الباقة الشهرية</li><li>✔️ تحديثات مجانية للمنصة</li><li class='text-amber-600 font-bold'>👑 ميزة حفظ القوالب</li>",
+                whatsapp: "واتساب",
+                instagram: "انستغرام",
+                most_popular: "الأكثر توفيراً",
+                payment_methods: "طرق الدفع مدعومة: زين كاش، آسيا حوالة، بطاقات الماستر كارد.",
+                admin_panel_title: "لوحة الإدارة والاشتراكات",
+                admin_search_placeholder: "البحث عن مستخدم بالاسم أو البريد الإلكتروني...",
+                admin_tbl_user: "اسم المستخدم / البريد",
+                admin_tbl_plan: "الخطة الحالية",
+                admin_tbl_status: "الحالة",
+                admin_tbl_expiry: "تاريخ الانتهاء",
+                admin_tbl_actions: "إجراءات",
+                admin_pwd_modal_title: "تفعيل الإدارة",
+                admin_pwd_modal_desc: "الرجاء إدخال كلمة المرور السرية للمتابعة.",
+                confirm_activate_btn: "تأكيد وتفعيل",
+                action_loading: "جارِ معالجة طلبك السحابي...",
+                wait_moments: "يرجى الانتظار لحظات",
+                new_pwd_title: "كلمة مرور جديدة",
+                set_new_pwd_desc: "قم بتعيين كلمة مرور جديدة لحسابك الآن.",
+                save_new_pwd_btn: "حفظ كلمة المرور والدخول",
+                action_success_title: "تمت العملية بنجاح!",
+                action_success_desc: "تم التفعيل وتحديث بياناتك بنجاح.",
+                continue_login_btn: "الاستمرار لتسجيل الدخول",
+                invalid_link_title: "الرابط غير صالح!",
+                invalid_link_desc: "عذراً، هذا الرابط إما أنه مستخدم مسبقاً أو منتهي الصلاحية.",
+                back_home_btn: "العودة للصفحة الرئيسية",
+                optical_badge: "تقنية الختم البصري نشطة"
+            },
+            en: {
+                main_title: "Forms Merger",
+                dev_credit: "Supervised & Developed by Prof. Muhammad Abdulrahman",
+                auth_subtitle_login: "Login to your account",
+                auth_subtitle_register: "Create a free new account",
+                login_tab: "Login",
+                register_tab: "New Account",
+                name_placeholder: "Full Name",
+                email_placeholder: "Email Address",
+                password_placeholder: "Password (••••••••)",
+                new_pwd_placeholder: "New Password (6+ characters)",
+                forgot_pwd_link: "Forgot Password?",
+                login_btn: "Login Now",
+                register_btn: "Register & Send Activation Link",
+                forgot_pwd_title: "Reset Password",
+                forgot_pwd_desc: "Enter your email and we'll send you a link to set a new password.",
+                forgot_pwd_warning: "⚠️ Note: The link might arrive in your Spam, Junk or Promotions folder.",
+                send_reset_btn: "Send Reset Link",
+                back_to_login_btn: "Back to Login",
+                loading_profile: "Loading profile...",
+                loading_subscription: "Checking subscription...",
+                activate_admin_btn: "🔑 Admin Activation",
+                upgrade_plan_btn: "Upgrade Plan",
+                admin_panel_btn: "Admin Panel",
+                loading_data: "Loading data...",
+                blocker_subscribe_btn: "View Subscription Plans",
+                app_title: "Automated Form Filler",
+                app_desc: "Upload a PDF form and an Excel file to instantly generate filled out forms",
+                app_creator: "Created by: Prof. Muhammad Abdulrahman",
+                step1_title: "1. Choose PDF Form",
+                step1_desc: "Supports interactive, flat and scanned PDF forms",
+                step2_title: "2. Choose Excel File",
+                step2_desc: "Contains the data to be mapped into the PDF",
+                step3_title: "3. Mapping & Design Configuration",
+                step3_desc: "Choose the mapping style for your forms and start linking",
+                mode_interactive: "Interactive Fields (AcroForms)",
+                mode_manual: "Manual Mode (Visual Placeholders)",
+                naming_col: "Output File Naming",
+                naming_desc: "Choose the column used to name each generated PDF (e.g. Name)",
+                flatten_pdf: "Flatten Output PDF File",
+                flatten_desc: "Recommended to prevent subsequent modifications.",
+                advisor_banner: "💡 Tip for Arabic Text:",
+                advisor_desc: "If you face separated or reversed Arabic characters, use \"Manual Mode\" for perfect visual rendering.",
+                convert_btn: "Convert All Fields to Manual Instantly",
+                table_pdf_field: "PDF Field Name",
+                table_excel_col: "Excel Column Header",
+                excel_cols_title: "Available Excel Fields",
+                excel_cols_desc: "Click a column, then click the desired spot on the PDF page:",
+                template_lock: "Save Templates for VIP",
+                template_lock_desc: "Exclusive for Monthly/Yearly subscribers: Design once, save, and reuse later in 1 click!",
+                templates_title: "Templates Manager",
+                template_save_lbl: "Save Current Design:",
+                template_name_placeholder: "Type template name here...",
+                save_btn: "Save",
+                template_load_lbl: "Manage Saved Templates:",
+                template_select_placeholder: "-- Select Template --",
+                apply_btn: "Apply",
+                rename_btn: "Rename",
+                delete_btn: "Delete",
+                editor_title: "Edit Field Format",
+                font_size_lbl: "Font Size",
+                font_color_lbl: "Text Color",
+                align_lbl: "Text Alignment",
+                align_right: "Right (for Arabic)",
+                align_center: "Center",
+                align_left: "Left (for English)",
+                align_multi_lbl: "Align Selected Elements:",
+                align_top_title: "Align Top",
+                align_bot_title: "Align Bottom",
+                align_left_title: "Align Left",
+                align_right_title: "Align Right",
+                delete_marker_btn: "Delete Selected",
+                designer_title: "Design Workspace",
+                next_btn: "Next",
+                prev_btn: "Prev",
+                preview_row_lbl: "Preview Row:",
+                indicator_choose: "Select Excel Column",
+                designer_empty_desc: "Please upload a PDF form to render visual preview...",
+                generate_btn: "Generate & Download Forms (ZIP)",
+                cancel_btn: "Cancel Generation",
+                sub_modal_title: "Choose the Best Plan for You",
+                sub_modal_desc: "Your free trial limit has been reached.",
+                monthly_plan: "Monthly Subscription",
+                monthly_price: "25,000 IQD / Month",
+                monthly_features: "<li>✔️ Process unlimited documents</li><li>✔️ Continuous technical support</li><li>✔️ High-precision visual stamp technology</li><li class='text-amber-600 font-bold'>👑 Template Saving Feature</li>",
+                yearly_plan: "Annual Subscription",
+                yearly_price: "50,000 IQD / Year",
+                yearly_features: "<li>✔️ Massive savings</li><li>✔️ All monthly plan features</li><li>✔️ Free platform updates</li><li class='text-amber-600 font-bold'>👑 Template Saving Feature</li>",
+                whatsapp: "WhatsApp",
+                instagram: "Instagram",
+                most_popular: "Best Value",
+                payment_methods: "Supported: Zain Cash, AsiaHawala, Master Card.",
+                admin_panel_title: "Admin & Subscriptions Panel",
+                admin_search_placeholder: "Search by name or email...",
+                admin_tbl_user: "User Name / Email",
+                admin_tbl_plan: "Current Plan",
+                admin_tbl_status: "Status",
+                admin_tbl_expiry: "Expiry Date",
+                admin_tbl_actions: "Actions",
+                admin_pwd_modal_title: "Admin Activation",
+                admin_pwd_modal_desc: "Please enter your secret password to proceed.",
+                confirm_activate_btn: "Confirm & Activate",
+                action_loading: "Processing cloud request...",
+                wait_moments: "Please wait moments",
+                new_pwd_title: "New Password",
+                set_new_pwd_desc: "Set a new password for your account now.",
+                save_new_pwd_btn: "Save Password & Login",
+                action_success_title: "Process completed successfully!",
+                action_success_desc: "Your account has been activated and profile updated.",
+                continue_login_btn: "Continue to Login",
+                invalid_link_title: "Invalid Link!",
+                invalid_link_desc: "Sorry, this link is either expired or already used.",
+                back_home_btn: "Back to Home",
+                optical_badge: "Visual Stamp Technology Active"
+            }
+        };
+
+        window.applyLanguageTranslations = function() {
+            const lang = currentLanguage;
+            
+            // تحديث اتجاه الصفحة بالكامل
+            if (lang === 'ar') {
+                document.documentElement.dir = 'rtl';
+                document.documentElement.lang = 'ar';
+            } else {
+                document.documentElement.dir = 'ltr';
+                document.documentElement.lang = 'en';
+            }
+
+            // تحديث النصوص العادية
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (dictionary[lang] && dictionary[lang][key]) {
+                    el.innerHTML = dictionary[lang][key];
+                }
+            });
+
+            // تحديث الـ placeholders
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-i18n-placeholder');
+                if (dictionary[lang] && dictionary[lang][key]) {
+                    el.placeholder = dictionary[lang][key];
+                }
+            });
+
+            // تحديث الـ titles للأزرار والتلميحات
+            document.querySelectorAll('[data-i18n-title]').forEach(el => {
+                const key = el.getAttribute('data-i18n-title');
+                if (dictionary[lang] && dictionary[lang][key]) {
+                    el.title = dictionary[lang][key];
+                }
+            });
+
+            // تحديث أزرار التبديل في الهيدر
+            const langText = lang === 'ar' ? '🌐 EN' : '🌐 عربي';
+            const authLangBtn = document.getElementById('lang-switch-auth-btn');
+            const mainLangBtn = document.getElementById('lang-switch-main-btn');
+            if (authLangBtn) authLangBtn.textContent = langText;
+            if (mainLangBtn) mainLangBtn.textContent = langText;
+
+            // تحديث عناوين الإدخال في واجهات الدخول المفتوحة
+            const authSub = document.getElementById('auth-subtitle');
+            if (authSub) {
+                authSub.textContent = authMode === 'login' ? dictionary[lang]['auth_subtitle_login'] : dictionary[lang]['auth_subtitle_register'];
+            }
+        };
+
+        window.toggleLanguage = function() {
+            currentLanguage = currentLanguage === 'ar' ? 'en' : 'ar';
+            localStorage.setItem('app_lang', currentLanguage);
+            window.applyLanguageTranslations();
+            // إعادة رسم الواجهات إذا كانت محملة
+            if (window.pdfBytes) {
+                buildMappingUI();
+                buildExcelColumnsWorkspace();
+                if (window.currentMode === 'manual') window.renderVisualPDF();
+            }
+        };
+
+        // ربط أزرار اللغة بالتبديل
+        document.getElementById('lang-switch-auth-btn')?.addEventListener('click', window.toggleLanguage);
+        document.getElementById('lang-switch-main-btn')?.addEventListener('click', window.toggleLanguage);
+        // ----------------------------------------------------
+
+        // Core Global States
+        let currentUser = null;
+        let userProfile = null;
+        let allUsers = [];
+        let profileUnsub = null;
+        let adminUnsub = null;
+        let authMode = 'login';
+        let adminSearchQuery = ''; // متغير البحث الجديد
+
+        // Custom Toast Function
+        let toastTimeout = null;
+        window.showToast = function(message, type = 'error') {
+            const toast = document.getElementById('custom-toast');
+            const msgEl = document.getElementById('toast-message');
+            if (msgEl) msgEl.textContent = message;
+            if (toast) {
+                if (toastTimeout) clearTimeout(toastTimeout);
+                toast.classList.remove('translate-y-20', 'opacity-0');
+                toast.classList.add('translate-y-0', 'opacity-100');
+                if (type === 'success') {
+                    toast.classList.remove('bg-red-600');
+                    toast.classList.add('bg-green-600');
+                } else {
+                    toast.classList.remove('bg-green-600');
+                    toast.classList.add('bg-red-600');
+                }
+                toastTimeout = setTimeout(window.hideToast, 5000);
+            }
+        };
+        window.hideToast = function() {
+            const toast = document.getElementById('custom-toast');
+            if (toast) {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }
+        };
+        document.getElementById('close-toast-btn')?.addEventListener('click', window.hideToast);
+
+        // ==========================================
+        // FIREBASE ACTION ROUTER (Reset Password from Link)
+        // ==========================================
+        const urlParams = new URLSearchParams(window.location.search);
+        const actionMode = urlParams.get('mode');
+        const actionCode = urlParams.get('oobCode');
+
+        if (actionMode && actionCode) {
+            document.getElementById('auth-screen')?.classList.add('hidden');
+            document.getElementById('main-app')?.classList.add('hidden');
+            
+            const actionScreen = document.getElementById('firebase-action-screen');
+            const actionLoading = document.getElementById('action-loading');
+            const actionResetPwdUI = document.getElementById('action-reset-pwd-ui');
+            const actionSuccessUI = document.getElementById('action-success-ui');
+            const actionErrorUI = document.getElementById('action-error-ui');
+            
+            if (actionScreen) actionScreen.classList.remove('hidden');
+
+            if (actionMode === 'resetPassword') {
+                actionLoading?.classList.add('hidden');
+                actionResetPwdUI?.classList.remove('hidden');
+                
+                document.getElementById('save-new-pwd-btn')?.addEventListener('click', async () => {
+                    const newPwd = document.getElementById('new-password-input')?.value;
+                    if (!newPwd || newPwd.length < 6) return window.showToast(currentLanguage === 'ar' ? "كلمة المرور يجب أن لا تقل عن 6 أحرف!" : "Password must be at least 6 characters!");
+                    
+                    const btn = document.getElementById('save-new-pwd-btn');
+                    btn.disabled = true; 
+                    btn.innerHTML = '...';
+                    
+                    try {
+                        await confirmPasswordReset(auth, actionCode, newPwd);
+                        actionResetPwdUI?.classList.add('hidden');
+                        actionSuccessUI?.classList.remove('hidden');
+                    } catch (error) {
+                        actionResetPwdUI?.classList.add('hidden');
+                        actionErrorUI?.classList.remove('hidden');
+                    }
+                });
+            } else {
+                actionLoading?.classList.add('hidden');
+                actionErrorUI?.classList.remove('hidden');
+            }
+            
+            document.getElementById('action-go-login-btn')?.addEventListener('click', () => { window.location.href = window.location.pathname; });
+            document.getElementById('action-go-home-btn')?.addEventListener('click', () => { window.location.href = window.location.pathname; });
+            
+            throw new Error("Action Router Active - Stopping normal execution");
+        }
+
+        // DOM elements for Auth UI
+        const authScreen = document.getElementById('auth-screen');
+        const mainApp = document.getElementById('main-app');
+        const authTabLogin = document.getElementById('auth-tab-login');
+        const authTabRegister = document.getElementById('auth-tab-register');
+        const authFieldName = document.getElementById('auth-field-name');
+        const authNameInput = document.getElementById('auth-name');
+        const authEmailInput = document.getElementById('auth-email');
+        const authPasswordInput = document.getElementById('auth-password');
+        const authSubmitBtn = document.getElementById('auth-submit-btn');
+        const authForm = document.getElementById('auth-form');
+        const logoutBtn = document.getElementById('logout-btn');
+        const forgotPwdContainer = document.getElementById('forgot-pwd-container');
+        const showForgotPwdBtn = document.getElementById('show-forgot-pwd-btn');
+        const authForgotPwdBox = document.getElementById('auth-forgot-pwd-box');
+        const authMainContent = document.getElementById('auth-main-content');
+        const backToLoginBtn = document.getElementById('back-to-login-btn');
+        const sendResetLinkBtn = document.getElementById('send-reset-link-btn');
+        const forgotPwdEmailInput = document.getElementById('forgot-pwd-email');
+
+        // Toggle Auth tabs
+        authTabLogin?.addEventListener('click', () => {
+            authMode = 'login';
+            if (authTabLogin) authTabLogin.className = "flex-1 py-2.5 text-sm font-extrabold rounded-lg bg-white text-blue-600 shadow-md transition-all duration-300 transform scale-100 relative z-10";
+            if (authTabRegister) authTabRegister.className = "flex-1 py-2.5 text-sm font-extrabold rounded-lg text-gray-500 hover:text-gray-700 transition-all duration-300 relative z-10";
+            authFieldName?.classList.add('hidden');
+            if (authNameInput) authNameInput.required = false;
+            authSubmitBtn.innerHTML = `<span>${dictionary[currentLanguage]['login_btn']}</span>`;
+            if (forgotPwdContainer) forgotPwdContainer.classList.remove('hidden');
+            const subtitle = document.getElementById('auth-subtitle');
+            if (subtitle) subtitle.textContent = dictionary[currentLanguage]['auth_subtitle_login'];
+        });
+
+        authTabRegister?.addEventListener('click', () => {
+            authMode = 'register';
+            if (authTabRegister) authTabRegister.className = "flex-1 py-2.5 text-sm font-extrabold rounded-lg bg-white text-blue-600 shadow-md transition-all duration-300 transform scale-100 relative z-10";
+            if (authTabLogin) authTabLogin.className = "flex-1 py-2.5 text-sm font-extrabold rounded-lg text-gray-500 hover:text-gray-700 transition-all duration-300 relative z-10";
+            authFieldName?.classList.remove('hidden');
+            if (authNameInput) authNameInput.required = true;
+            authSubmitBtn.innerHTML = `<span>${dictionary[currentLanguage]['register_btn']}</span>`;
+            if (forgotPwdContainer) forgotPwdContainer.classList.add('hidden');
+            const subtitle = document.getElementById('auth-subtitle');
+            if (subtitle) subtitle.textContent = dictionary[currentLanguage]['auth_subtitle_register'];
+        });
+
+        // Forgot Password Logic
+        showForgotPwdBtn?.addEventListener('click', () => {
+            authMainContent?.classList.add('hidden');
+            authForgotPwdBox?.classList.remove('hidden');
+            if (forgotPwdEmailInput && authEmailInput) {
+                forgotPwdEmailInput.value = authEmailInput.value;
+            }
+        });
+
+        backToLoginBtn?.addEventListener('click', () => {
+            authForgotPwdBox?.classList.add('hidden');
+            authMainContent?.classList.remove('hidden');
+        });
+
+        sendResetLinkBtn?.addEventListener('click', async () => {
+            const email = forgotPwdEmailInput?.value.trim();
+            if (!email) return window.showToast(currentLanguage === 'ar' ? "الرجاء إدخال البريد الإلكتروني أولاً." : "Please enter your email address first.");
+            
+            const originalText = sendResetLinkBtn.innerHTML;
+            sendResetLinkBtn.disabled = true;
+            sendResetLinkBtn.innerHTML = "...";
+            
+            try {
+                await sendPasswordResetEmail(auth, email);
+                window.showToast(currentLanguage === 'ar' ? "تم إرسال رابط إعادة التعيين لبريدك بنجاح!" : "Reset link sent successfully to your email!", "success");
+                backToLoginBtn?.click();
+            } catch (error) {
+                window.showToast(currentLanguage === 'ar' ? "حدث خطأ أثناء إرسال الرابط." : "An error occurred while sending the reset link.");
+            } finally {
+                sendResetLinkBtn.disabled = false;
+                sendResetLinkBtn.innerHTML = originalText;
+            }
+        });
+
+        // Email and Password Login / Registration
+        authForm?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = authEmailInput?.value.trim();
+            const password = authPasswordInput?.value;
+            const fullName = authNameInput?.value.trim();
+
+            const originalBtnContent = authSubmitBtn.innerHTML;
+            authSubmitBtn.disabled = true;
+            authSubmitBtn.innerHTML = "...";
+
+            try {
+                if (authMode === 'login') {
+                    await signInWithEmailAndPassword(auth, email, password);
+                } else {
+                    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                    const user = userCredential.user;
+                    
+                    // إرسال رابط التفعيل الأمني
+                    await sendEmailVerification(user);
+
+                    const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid);
+                    const newProfile = {
+                        uid: user.uid,
+                        displayName: fullName || 'New User',
+                        email: email,
+                        role: 'user',
+                        plan: 'trial',
+                        status: 'active',
+                        trialUsed: false,
+                        expireAt: null,
+                        createdAt: Date.now()
+                    };
+                    await setDoc(profileRef, newProfile);
+                    window.showToast(currentLanguage === 'ar' ? "تم إنشاء حسابك! يرجى مراجعة بريدك الإلكتروني للضغط على رابط التفعيل." : "Account created! Please check your email to activate.", "success");
+                    
+                    // تحويل المستخدم لواجهة الانتظار
+                    authScreen?.classList.add('hidden');
+                    mainApp?.classList.remove('hidden');
+                }
+            } catch (error) {
+                authSubmitBtn.disabled = false;
+                authSubmitBtn.innerHTML = originalBtnContent;
+                window.showToast(currentLanguage === 'ar' ? "حدث خطأ أثناء المعالجة، يرجى التحقق من المدخلات." : "An error occurred, please verify inputs.");
+            }
+        });
+
+        logoutBtn?.addEventListener('click', async () => {
+            try {
+                const appBlocker = document.getElementById('app-blocker');
+                const blockerMsg = document.getElementById('app-blocker-msg');
+                if (appBlocker && blockerMsg) {
+                    appBlocker.classList.remove('hidden');
+                    blockerMsg.innerHTML = currentLanguage === 'ar' ? "جارِ تسجيل الخروج..." : "Signing out...";
+                }
+                await signOut(auth);
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } catch (error) {
+                console.error("Logout Error", error);
+            }
+        });
+
+        // Firebase Auth observer (منع الدخول حتى تفعيل البريد)
+        onAuthStateChanged(auth, (user) => {
+            if (profileUnsub) { profileUnsub(); profileUnsub = null; }
+            if (adminUnsub) { adminUnsub(); adminUnsub = null; }
+
+            if (user) {
+                currentUser = user;
+
+                // التحقق من تفعيل البريد الإلكتروني
+                if (!user.emailVerified) {
+                    authScreen?.classList.add('hidden');
+                    mainApp?.classList.remove('hidden');
+                    
+                    const appBlocker = document.getElementById('app-blocker');
+                    const blockerMsg = document.getElementById('app-blocker-msg');
+                    const blockerSubBtn = document.getElementById('blocker-subscribe-btn');
+                    
+                    appBlocker?.classList.remove('hidden');
+                    appBlocker?.querySelector('.loader-spin')?.classList.add('hidden');
+                    blockerSubBtn?.classList.add('hidden');
+                    
+                    if (blockerMsg) {
+                        blockerMsg.innerHTML = `
+                            <div class="text-center p-6 bg-white rounded-2xl max-w-sm mx-auto shadow-sm">
+                                <div class="w-16 h-16 bg-blue-50 text-blue-600 rounded-full mx-auto mb-4 flex items-center justify-center shadow-inner">
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                </div>
+                                <h3 class="text-xl font-black text-gray-800 mb-2">${currentLanguage === 'ar' ? 'تفعيل حسابك معلق' : 'Activation Pending'}</h3>
+                                <p class="text-sm text-gray-600 mb-4">${currentLanguage === 'ar' ? 'يرجى تأكيد حسابك من خلال الرابط المرسل إلى بريدك الإلكتروني:' : 'Please verify your account via the activation link sent to:'}</p>
+                                <div class="bg-blue-50 text-blue-800 text-xs font-bold py-2 px-3 rounded-lg mb-4 select-all break-all">
+                                    ${user.email}
+                                </div>
+                                <p class="text-[10px] text-red-500 font-bold mb-4">${currentLanguage === 'ar' ? '⚠️ إذا لم تجد الرسالة، تفقد البريد غير المرغوب فيه (Spam).' : '⚠️ If not found, check Spam/Junk folder.'}</p>
+                                <div class="flex flex-col gap-2">
+                                    <button id="resend-verify-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl transition-all shadow-md text-xs">
+                                        ${currentLanguage === 'ar' ? 'إرسال رابط التفعيل مجدداً' : 'Resend Activation Link'}
+                                    </button>
+                                    <button id="verify-check-refresh" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 rounded-xl transition-all text-xs">
+                                        🔄 ${currentLanguage === 'ar' ? 'لقد قمت بالتفعيل (اضغط للتحديث والدخول)' : 'I have activated (Click to refresh)'}
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                        
+                        document.getElementById('resend-verify-btn')?.addEventListener('click', async () => {
+                            try {
+                                await sendEmailVerification(auth.currentUser);
+                                window.showToast(currentLanguage === 'ar' ? "تم إرسال الرابط بنجاح! تفقد بريدك الوارد." : "Link sent successfully! Check inbox.", "success");
+                            } catch (err) {
+                                window.showToast(currentLanguage === 'ar' ? "عذراً، انتظر دقيقة ثم أعد المحاولة." : "Please wait a minute before retrying.");
+                            }
+                        });
+                        
+                        document.getElementById('verify-check-refresh')?.addEventListener('click', () => {
+                            window.location.reload();
+                        });
+                    }
+                    return;
+                }
+
+                // جلب بيانات الحساب المفعّل
+                const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid);
+                
+                profileUnsub = onSnapshot(profileRef, (snapshot) => {
+                    let uProfile = snapshot.exists() ? snapshot.data() : null;
+                    
+                    userProfile = uProfile;
+                    authScreen?.classList.add('hidden');
+                    mainApp?.classList.remove('hidden');
+                    updateAccountUI();
+
+                    if (userProfile?.role === 'admin' && !adminUnsub) {
+                        const profilesCol = collection(db, 'artifacts', appId, 'public', 'data', 'profiles');
+                        adminUnsub = onSnapshot(profilesCol, (colSnap) => {
+                            allUsers = [];
+                            colSnap.forEach(d => allUsers.push(d.data()));
+                            renderAdminPanel();
+                        }, (err) => console.error("Admin listen error:", err));
+                    }
+                }, (err) => {
+                    const blockerMsg = document.getElementById('app-blocker-msg');
+                    if (blockerMsg) blockerMsg.textContent = "Error loading account data.";
+                });
+            } else {
+                currentUser = null;
+                userProfile = null;
+                authScreen?.classList.remove('hidden');
+                mainApp?.classList.add('hidden');
+                
+                authMainContent?.classList.remove('hidden');
+                authForgotPwdBox?.classList.add('hidden');
+                
+                if (authSubmitBtn) {
+                    authSubmitBtn.disabled = false;
+                    authSubmitBtn.innerHTML = `<span>${dictionary[currentLanguage]['login_btn']}</span>`;
+                }
+            }
+        });
+
+        // ----------------------------------------------------
+        // Premium Templates Logic (VIP)
+        // ----------------------------------------------------
+        window.savedTemplates = {};
+
+        async function loadSavedTemplates() {
+            if (!auth.currentUser) return;
+            const select = document.getElementById('saved-templates-select');
+            if (!select) return;
+            select.innerHTML = `<option value="">${dictionary[currentLanguage]['template_select_placeholder']}</option>`;
+            
+            try {
+                const q = query(collection(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'templates'));
+                const snap = await getDocs(q);
+                window.savedTemplates = {};
+                snap.forEach(doc => {
+                    const data = doc.data();
+                    window.savedTemplates[doc.id] = data;
+                    select.appendChild(new Option(data.name, doc.id));
+                });
+            } catch(e) { console.error("Error loading templates", e); }
+        }
+
+        document.getElementById('save-template-btn')?.addEventListener('click', async () => {
+            if (!auth.currentUser) return;
+            const name = document.getElementById('template-name-input')?.value.trim();
+            if (!name) return window.showToast(currentLanguage === 'ar' ? "يرجى كتابة اسم للقالب أولاً." : "Please type a template name first.");
+            if (!window.manualMarkers || window.manualMarkers.length === 0) return window.showToast(currentLanguage === 'ar' ? "لا يوجد حقول مصممة لحفظها!" : "No designed fields to save!");
+
+            const btn = document.getElementById('save-template-btn');
+            btn.textContent = "...";
+            try {
+                await addDoc(collection(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'templates'), {
+                    name: name,
+                    markers: window.manualMarkers,
+                    createdAt: Date.now()
+                });
+                window.showToast(currentLanguage === 'ar' ? "تم حفظ القالب بنجاح! يمكنك استخدامه لاحقاً." : "Template saved successfully!", "success");
+                document.getElementById('template-name-input').value = '';
+                loadSavedTemplates();
+            } catch(e) { 
+                window.showToast("Failed to save template."); 
+            }
+            btn.textContent = dictionary[currentLanguage]['save_btn'];
+        });
+
+        document.getElementById('load-template-btn')?.addEventListener('click', () => {
+            const tId = document.getElementById('saved-templates-select')?.value;
+            if (!tId || !window.savedTemplates[tId]) return window.showToast(currentLanguage === 'ar' ? "يرجى اختيار قالب من القائمة." : "Please select a template from the list.");
+            if (!window.pdfBytes) return window.showToast(currentLanguage === 'ar' ? "يرجى رفع ملف PDF (استمارة) أولاً لتطبيق القالب عليها." : "Please upload a PDF form first.");
+
+            const template = window.savedTemplates[tId];
+            window.manualMarkers = template.markers || [];
+            window.redrawMarkers();
+            window.showToast(currentLanguage === 'ar' ? "تم تطبيق القالب بنجاح!" : "Template applied successfully!", "success");
+        });
+
+        document.getElementById('rename-template-btn')?.addEventListener('click', async () => {
+            if (!auth.currentUser) return;
+            const tId = document.getElementById('saved-templates-select')?.value;
+            if (!tId || !window.savedTemplates[tId]) return window.showToast(currentLanguage === 'ar' ? "يرجى اختيار قالب من القائمة لتعديل اسمه." : "Please choose a template to rename.");
+            
+            const newName = document.getElementById('template-name-input')?.value.trim();
+            if (!newName) return window.showToast(currentLanguage === 'ar' ? "يرجى كتابة الاسم الجديد في حقل 'اكتب اسم القالب' بالأعلى ثم الضغط على تسمية." : "Please write the new name in the text field first.");
+            
+            const btn = document.getElementById('rename-template-btn');
+            const originalText = btn.textContent;
+            btn.textContent = "...";
+            try {
+                await updateDoc(doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'templates', tId), {
+                    name: newName
+                });
+                window.showToast(currentLanguage === 'ar' ? "تم تغيير اسم القالب بنجاح!" : "Template renamed successfully!", "success");
+                document.getElementById('template-name-input').value = '';
+                loadSavedTemplates();
+            } catch(e) {
+                window.showToast("Failed to rename template.");
+            }
+            btn.textContent = originalText;
+        });
+
+        document.getElementById('delete-template-btn')?.addEventListener('click', async () => {
+            if (!auth.currentUser) return;
+            const tId = document.getElementById('saved-templates-select')?.value;
+            if (!tId || !window.savedTemplates[tId]) return window.showToast(currentLanguage === 'ar' ? "يرجى اختيار قالب من القائمة للحذف." : "Please select a template to delete.");
+            
+            const btn = document.getElementById('delete-template-btn');
+            const originalText = btn.textContent;
+            btn.textContent = "...";
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'templates', tId));
+                window.showToast(currentLanguage === 'ar' ? "تم حذف القالب نهائياً!" : "Template deleted successfully!", "success");
+                loadSavedTemplates();
+            } catch(e) {
+                window.showToast("Failed to delete template.");
+            }
+            btn.textContent = originalText;
+        });
+
+
+        function updateAccountUI() {
+            const displayNameEl = document.getElementById('user-display-name');
+            const planStatusEl = document.getElementById('user-plan-status');
+            const adminBtn = document.getElementById('open-admin-btn');
+            const subBtn = document.getElementById('show-subscriptions-btn');
+            const appBlocker = document.getElementById('app-blocker');
+            const blockerMsg = document.getElementById('app-blocker-msg');
+            const blockerSubBtn = document.getElementById('blocker-subscribe-btn');
+            const premiumTemplateLock = document.getElementById('premium-template-lock');
+
+            if (displayNameEl) displayNameEl.textContent = userProfile?.displayName || "مستخدم";
+            
+            const now = Date.now();
+            let isExpired = false;
+            if (userProfile?.expireAt && userProfile?.expireAt < now) {
+                isExpired = true;
+            }
+
+            let planName = currentLanguage === 'ar' ? "مجاني (تجربة)" : "Free Trial";
+            if (userProfile?.plan === 'monthly') planName = currentLanguage === 'ar' ? "اشتراك شهري" : "Monthly Sub";
+            if (userProfile?.plan === 'yearly') planName = currentLanguage === 'ar' ? "اشتراك سنوي" : "Annual Sub";
+
+            if (userProfile) {
+                if (planStatusEl) planStatusEl.textContent = `${dictionary[currentLanguage]['font_color_lbl']}: ${planName} | ${userProfile.status === 'active' ? (isExpired ? 'Expired' : 'Active') : 'Blocked'}`;
+
+                // --- تقييد صلاحيات الإدارة الحصرية للحساب المطلوب ---
+                const isSuperAdminEmail = userProfile.email === 'muhammad.prince.1997@gmail.com';
+
+                if (userProfile.role === 'admin' && isSuperAdminEmail) {
+                    adminBtn?.classList.remove('hidden');
+                    if (adminBtn) { adminBtn.textContent = dictionary[currentLanguage]['admin_panel_btn']; adminBtn.onclick = null; }
+                    document.getElementById('activate-admin-btn')?.classList.add('hidden');
+                } else if (isSuperAdminEmail) {
+                    adminBtn?.classList.add('hidden');
+                    document.getElementById('activate-admin-btn')?.classList.remove('hidden');
+                } else {
+                    adminBtn?.classList.add('hidden');
+                    document.getElementById('activate-admin-btn')?.classList.add('hidden');
+                }
+                // ----------------------------------------------------
+
+                // Check VIP features
+                const isPaid = (userProfile.plan === 'monthly' || userProfile.plan === 'yearly') && !isExpired && userProfile.status === 'active';
+                
+                if (isPaid) {
+                    subBtn?.classList.add('hidden');
+                    premiumTemplateLock?.classList.add('hidden');
+                    loadSavedTemplates(); 
+                } else {
+                    subBtn?.classList.remove('hidden');
+                    premiumTemplateLock?.classList.remove('hidden');
+                }
+                if (userProfile.role === 'admin') {
+                    premiumTemplateLock?.classList.add('hidden');
+                    loadSavedTemplates();
+                }
+
+                if (userProfile.status !== 'active') {
+                    appBlocker?.classList.remove('hidden');
+                    if (blockerMsg) blockerMsg.textContent = currentLanguage === 'ar' ? "هذا الحساب تم إيقافه من قبل الإدارة." : "This account has been suspended.";
+                    blockerSubBtn?.classList.add('hidden');
+                    appBlocker?.querySelector('.loader-spin')?.classList.add('hidden');
+                    return;
+                }
+
+                if (isExpired) {
+                    appBlocker?.classList.remove('hidden');
+                    if (blockerMsg) blockerMsg.textContent = currentLanguage === 'ar' ? "عذراً، انتهت صلاحية اشتراكك المالي." : "Subscription expired.";
+                    blockerSubBtn?.classList.remove('hidden');
+                    appBlocker?.querySelector('.loader-spin')?.classList.add('hidden');
+                    return;
+                }
+
+                if (userProfile.plan === 'trial' && userProfile.trialUsed) {
+                    appBlocker?.classList.remove('hidden');
+                    if (blockerMsg) blockerMsg.textContent = currentLanguage === 'ar' ? "لقد استهلكت تجربتك المجانية (ملف واحد كحد أقصى)." : "You have used your free trial limit (1 document).";
+                    blockerSubBtn?.classList.remove('hidden');
+                    appBlocker?.querySelector('.loader-spin')?.classList.add('hidden');
+                    return;
+                }
+
+                appBlocker?.classList.add('hidden');
+            }
+        }
+
+        // Modals Controls
+        const subModal = document.getElementById('subscription-modal');
+        const adminModal = document.getElementById('admin-modal');
+        
+        document.getElementById('show-subscriptions-btn')?.addEventListener('click', () => subModal?.classList.remove('hidden'));
+        document.getElementById('blocker-subscribe-btn')?.addEventListener('click', () => subModal?.classList.remove('hidden'));
+        document.getElementById('close-sub-modal')?.addEventListener('click', () => subModal?.classList.add('hidden'));
+        
+        document.getElementById('open-admin-btn')?.addEventListener('click', () => {
+            if(userProfile && userProfile.role === 'admin') {
+                // تصفير شريط البحث كلما فتحنا اللوحة
+                adminSearchQuery = '';
+                const searchInput = document.getElementById('admin-search-input');
+                if (searchInput) searchInput.value = '';
+                
+                adminModal?.classList.remove('hidden');
+                renderAdminPanel();
+            }
+        });
+        document.getElementById('close-admin-modal')?.addEventListener('click', () => adminModal?.classList.add('hidden'));
+
+        // ربط أحداث نافذة تفعيل الإدارة المنبثقة والتحقق من الرمز
+        document.getElementById('activate-admin-btn')?.addEventListener('click', () => {
+            document.getElementById('admin-password-modal')?.classList.remove('hidden');
+        });
+        document.getElementById('close-pwd-modal')?.addEventListener('click', () => {
+            document.getElementById('admin-password-modal')?.classList.add('hidden');
+        });
+        document.getElementById('submit-admin-pwd-btn')?.addEventListener('click', async () => {
+            const pwd = document.getElementById('admin-pwd-input')?.value;
+            if (pwd === 'muhammad1997') {
+                if (auth.currentUser) {
+                    try {
+                        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', auth.currentUser.uid), {
+                            role: 'admin'
+                        });
+                        window.showToast("Admin privilege activated!", "success");
+                        document.getElementById('admin-password-modal')?.classList.add('hidden');
+                    } catch (e) {
+                        window.showToast("An error occurred during activation.");
+                    }
+                }
+            } else {
+                window.showToast("Incorrect password!");
+            }
+        });
+
+        // تشغيل البحث المباشر في لوحة الإدارة عند التغيير والكتابة
+        document.getElementById('admin-search-input')?.addEventListener('input', (e) => {
+            adminSearchQuery = e.target.value.toLowerCase().trim();
+            renderAdminPanel();
+        });
+
+        // Admin Panel Rendering & Logic
+        window.saveUserChanges = async function(targetUid) {
+            if(userProfile.role !== 'admin') return;
+            
+            const planSelect = document.getElementById(`plan_${targetUid}`)?.value;
+            const statusSelect = document.getElementById(`status_${targetUid}`)?.value;
+            const dateInput = document.getElementById(`date_${targetUid}`)?.value;
+            
+            let expireAt = null;
+            if (dateInput) {
+                expireAt = new Date(dateInput).getTime();
+            }
+
+            try {
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', targetUid), {
+                    plan: planSelect,
+                    status: statusSelect,
+                    expireAt: expireAt,
+                    trialUsed: planSelect === 'trial' ? false : true 
+                });
+                window.showToast("User updated successfully!", "success");
+            } catch(e) {
+                window.showToast("Failed to update user.");
+            }
+        };
+
+        function renderAdminPanel() {
+            const tbody = document.getElementById('admin-users-table');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            
+            // فلترة القائمة بناءً على نص البحث
+            const filteredUsers = allUsers.filter(u => {
+                const name = (u.displayName || '').toLowerCase();
+                const email = (u.email || '').toLowerCase();
+                return name.includes(adminSearchQuery) || email.includes(adminSearchQuery);
+            });
+
+            if (filteredUsers.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="px-4 py-8 text-center text-gray-500 font-bold">
+                            🔍 No results found...
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            filteredUsers.forEach(u => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-blue-50 transition-colors";
+                
+                let dateValue = '';
+                if (u.expireAt) {
+                    const d = new Date(u.expireAt);
+                    dateValue = d.toISOString().split('T')[0];
+                }
+
+                tr.innerHTML = `
+                    <td class="px-4 py-4 border-b border-gray-200">
+                        <div class="font-bold text-gray-800">${u.displayName || 'No Name'}</div>
+                        <div class="text-xs text-blue-600">${u.email || 'External Account'}</div>
+                        <div class="text-[9px] text-gray-400">${u.uid}</div>
+                    </td>
+                    <td class="px-4 py-4 border-b border-gray-200">
+                        <select id="plan_${u.uid}" class="border rounded p-1 text-sm bg-white w-full">
+                            <option value="trial" ${u.plan === 'trial' ? 'selected' : ''}>Trial</option>
+                            <option value="monthly" ${u.plan === 'monthly' ? 'selected' : ''}>Monthly</option>
+                            <option value="yearly" ${u.plan === 'yearly' ? 'selected' : ''}>Yearly</option>
+                        </select>
+                    </td>
+                    <td class="px-4 py-4 border-b border-gray-200">
+                        <select id="status_${u.uid}" class="border rounded p-1 text-sm bg-white w-full">
+                            <option value="active" ${u.status === 'active' ? 'selected' : ''}>Active</option>
+                            <option value="inactive" ${u.status === 'inactive' ? 'selected' : ''}>Suspended</option>
+                        </select>
+                    </td>
+                    <td class="
